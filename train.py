@@ -87,7 +87,7 @@ tagger: SequenceTagger = SequenceTagger(hidden_size=args.hidden_size,
                                         tag_type=tag_type,
                                         use_crf=True,
                                         rnn_layers=args.num_hidden_layers,
-                                        dropout=args.dropout_rate)
+                                        rnn_dropout=args.dropout_rate)
 
 # initialize trainer
 from flair.trainers import ModelTrainer

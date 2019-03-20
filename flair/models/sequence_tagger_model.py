@@ -76,6 +76,7 @@ class SequenceTagger(flair.nn.Model):
                  use_rnn: bool = True,
                  rnn_layers: int = 1,
                  dropout: float = 0.0,
+                 rnn_dropout: float = 0.0, 
                  word_dropout: float = 0.05,
                  locked_dropout: float = 0.5,
                  pickle_module: str = 'pickle'
@@ -135,7 +136,7 @@ class SequenceTagger(flair.nn.Model):
             else:
                 self.rnn = getattr(torch.nn, self.rnn_type)(rnn_input_dim, hidden_size,
                                                             num_layers=self.nlayers,
-                                                            dropout=0.5,
+                                                            dropout=rnn_dropout,
                                                             bidirectional=True)
 
         # final linear map to tag space
