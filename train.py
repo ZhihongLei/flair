@@ -16,7 +16,7 @@ parser.add_argument('--dropout-rate', type=float, default=0.0, help='Dropout rat
 parser.add_argument('--optimizer', default='sgd', choices=['sgd', 'adam'], help='Type of optimizer')
 parser.add_argument('--init-lr', type=float, required=True, help='Initial learning rate')
 parser.add_argument('--num-epochs', type=int, default=20, help='Number of epochs')
-parser.add_argument('--data-dir', required=True, help='Data dir')
+#parser.add_argument('--data-dir', required=True, help='Data dir')
 parser.add_argument('--working-dir', default='.', help='Working directory where outputs are stored')
 
 args = parser.parse_args()
@@ -49,9 +49,9 @@ if len(embedding_types) == 0:
     raise ValueError('Must specify at least one embedding type!')
 
 # 1. get the corpus
-#corpus: TaggedCorpus = NLPTaskDataFetcher.load_corpus(NLPTask.CONLL_03, '/Users/zhihonglei/work/hiwi')
-print('Reading data from {} ...'.format(args.data_dir))
-corpus: TaggedCorpus = NLPTaskDataFetcher.load_column_corpus(args.data_dir, {0: 'text', 1: 'ner'}, tag_to_biloes='ner')
+corpus: TaggedCorpus = NLPTaskDataFetcher.load_corpus(NLPTask.CONLL_03, '/u/lei/work/data')
+#print('Reading data from {} ...'.format(args.data_dir))
+#corpus: TaggedCorpus = NLPTaskDataFetcher.load_column_corpus(args.data_dir, {0: 'text', 1: 'ner'}, tag_to_biloes='ner')
 print(corpus)
 
 # 2. what tag do we want to predict?
