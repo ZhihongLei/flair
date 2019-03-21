@@ -5,11 +5,22 @@ import gpustat
 import torch
 from torch.optim.adam import Adam
 from torch.optim.sgd import SGD
-  
+
+
+def pooled_embeddings(s):
+    try:
+        embedding, pooling = s.split(',')
+    except:
+        raise argparse.ArgumentTypeError('Pooled Embeddings should be EmbeddingType,PoolingType.')
+    if pooling == 'max' or pooling == 'min' or pooling == 'mean' or pooling == 'fade':
+        return embedding, pooling
+    raise argparse.ArgumentTypeError('PoolingType must be chosen from: max, min, mean or fade.')
+
 parser = argparse.ArgumentParser(description='Train Flair NER model')
 parser.add_argument('--word-embeddings', nargs='*', default='', help='Type(s) of word embeddings')
 parser.add_argument('--char-embeddings', action='store_true', help='Character embeddings trained on task corpus, Lample 2016')
 parser.add_argument('--flair-embeddings', nargs='*', default='', help='Type(s) of Flair embeddings')
+parser.add_argument('--pooled-flair-embeddings', nargs='*', default='', type=pooled_embeddings, help="Type(s) of pooled Flair embeddings")
 parser.add_argument('--hidden-size', type=int, default=256, help='Hidden layer size')
 parser.add_argument('--num-hidden-layers', type=int, default=1, help='Number of hidden layers')
 parser.add_argument('--dropout-rate', type=float, default=0.0, help='Dropout rate')

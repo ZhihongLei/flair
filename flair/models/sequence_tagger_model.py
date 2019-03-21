@@ -674,3 +674,6 @@ class SequenceTagger(flair.nn.Model):
         if model_file is not None:
             tagger: SequenceTagger = SequenceTagger.load_from_file(model_file)
             return tagger
+
+
+#class SequenceTaggerWith(SequenceTagger):
