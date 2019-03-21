@@ -54,8 +54,10 @@ from flair.visual.training_curves import Plotter
 embedding_types: List[TokenEmbeddings] = [WordEmbeddings(type) for type in args.word_embeddings]
 if args.char_embeddings:
      embedding_types.append(CharacterEmbeddings())
-embedding_types.extend([FlairEmbeddings(type) for type in args.flair_embeddings])
-embedding_types.extend([PooledFlairEmbeddings(type, pooling) for type, pooling in args.pooled_flair_embeddings])
+if args.flair_embeddings:
+    embedding_types.extend([FlairEmbeddings(type) for type in args.flair_embeddings])
+if args.pooled_flair_embeddings:
+    embedding_types.extend([PooledFlairEmbeddings(type, pooling) for type, pooling in args.pooled_flair_embeddings])
 
 if len(embedding_types) == 0:
     raise ValueError('Must specify at least one embedding type!')
