@@ -676,4 +676,104 @@ class SequenceTagger(flair.nn.Model):
             return tagger
 
 
-#class SequenceTaggerWith(SequenceTagger):
+class SequenceTaggerWithAdditionalTags(SequenceTagger):
+    def __init__(self,
+                 hidden_size: int,
+                 word_embeddings: flair.embeddings.TokenEmbeddings,
+                 tag_dictionary: Dictionary,
+                 tag_type: str,
+                 additional_embeddings: List[flair.embeddings.TokenEmbeddings],
+                 additional_tag_dictionaries: List[Dictionary],
+                 use_crf: bool = True,
+                 use_rnn: bool = True,
+                 rnn_layers: int = 1,
+                 dropout: float = 0.0,
+                 rnn_dropout: float = 0.0, 
+                 word_dropout: float = 0.05,
+                 locked_dropout: float = 0.5,
+                 pickle_module: str = 'pickle'
+                 ):
+        
+        self.additional_embeddings = additional_embeddings
+        self.additional_tag_dictionaries = additional_tag_dictionaries
+        self.additional_tag_sizes = [len(d) for d in additional_tag_dictionaries]
+        
+        super(SequenceTaggerWithAdditionalTags, self).__init__(hidden_size, 
+                                                               word_embeddings, 
+                                                               tag_dictionary,
+                                                               tag_type,
+                                                               use_crf,
+                                                               use_rnn,
+                                                               rnn_layers,
+                                                               dropout,
+                                                               rnn_dropout,
+                                                               word_dropout,
+                                                               locked_dropout,
+                                                               pickle_module)
+
+
+    def forward(self, sentences: List[Sentence], sort=True):
+        self.zero_grad()
+
+        self.embeddings.embed(sentences)
+
+        # if sorting is enabled, sort sentences by number of tokens
+        if sort:
+            sentences.sort(key=lambda x: len(x), reverse=True)
+
+        lengths: List[int] = [len(sentence.tokens) for sentence in sentences]
+        tag_list: List = []
+        longest_token_sequence_in_batch: int = lengths[0]
+
+        # initialize zero-padded word embeddings tensor
+        sentence_tensor = torch.zeros([len(sentences),
+                                       longest_token_sequence_in_batch,
+                                       self.embeddings.embedding_length],
+                                      dtype=torch.float, device=flair.device)
+
+        for s_id, sentence in enumerate(sentences):
+
+            # fill values with word embeddings
+            sentence_tensor[s_id][:len(sentence)] = torch.cat([token.get_embedding().unsqueeze(0)
+                                                               for token in sentence], 0)
+
+            # get the tags in this sentence
+            tag_idx: List[int] = [self.tag_dictionary.get_idx_for_item(token.get_tag(self.tag_type).value)
+                                  for token in sentence]
+            # add tags as tensor
+            tag = torch.LongTensor(tag_idx).to(flair.device)
+            tag_list.append(tag)
+
+        sentence_tensor = sentence_tensor.transpose_(0, 1)
+
+        # --------------------------------------------------------------------
+        # FF PART
+        # --------------------------------------------------------------------
+        if self.use_dropout > 0.0:
+            sentence_tensor = self.dropout(sentence_tensor)
+        if self.use_word_dropout > 0.0:
+            sentence_tensor = self.word_dropout(sentence_tensor)
+        if self.use_locked_dropout > 0.0:
+            sentence_tensor = self.locked_dropout(sentence_tensor)
+
+        if self.relearn_embeddings:
+            sentence_tensor = self.embedding2nn(sentence_tensor)
+
+        if self.use_rnn:
+            packed = torch.nn.utils.rnn.pack_padded_sequence(sentence_tensor, lengths)
+
+            rnn_output, hidden = self.rnn(packed)
+
+            sentence_tensor, output_lengths = torch.nn.utils.rnn.pad_packed_sequence(rnn_output)
+
+            if self.use_dropout > 0.0:
+                sentence_tensor = self.dropout(sentence_tensor)
+            # word dropout only before LSTM - TODO: more experimentation needed
+            # if self.use_word_dropout > 0.0:
+            #     sentence_tensor = self.word_dropout(sentence_tensor)
+            if self.use_locked_dropout > 0.0:
+                sentence_tensor = self.locked_dropout(sentence_tensor)
+
+        features = self.linear(sentence_tensor)
+
+        return features.transpose_(0, 1), lengths, tag_list

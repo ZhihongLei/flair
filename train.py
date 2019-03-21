@@ -17,9 +17,9 @@ def pooled_embeddings(s):
     raise argparse.ArgumentTypeError('PoolingType must be chosen from: max, min, mean or fade.')
 
 parser = argparse.ArgumentParser(description='Train Flair NER model')
-parser.add_argument('--word-embeddings', nargs='*', default='', help='Type(s) of word embeddings')
+parser.add_argument('--word-embeddings', nargs='*', help='Type(s) of word embeddings')
 parser.add_argument('--char-embeddings', action='store_true', help='Character embeddings trained on task corpus, Lample 2016')
-parser.add_argument('--flair-embeddings', nargs='*', default='', help='Type(s) of Flair embeddings')
+parser.add_argument('--flair-embeddings', nargs='*', help='Type(s) of Flair embeddings')
 parser.add_argument('--pooled-flair-embeddings', nargs='*', type=pooled_embeddings, help="Type(s) of pooled Flair embeddings")
 parser.add_argument('--hidden-size', type=int, default=256, help='Hidden layer size')
 parser.add_argument('--num-hidden-layers', type=int, default=1, help='Number of hidden layers')
@@ -46,7 +46,7 @@ except:
 
 from flair.data_fetcher import NLPTaskDataFetcher, NLPTask
 from flair.data import TaggedCorpus
-from flair.embeddings import TokenEmbeddings, WordEmbeddings, StackedEmbeddings, CharacterEmbeddings, FlairEmbeddings
+from flair.embeddings import TokenEmbeddings, WordEmbeddings, StackedEmbeddings, CharacterEmbeddings, FlairEmbeddings, PooledFlairEmbeddings
 from flair.training_utils import EvaluationMetric
 from flair.visual.training_curves import Plotter
 
@@ -55,6 +55,7 @@ embedding_types: List[TokenEmbeddings] = [WordEmbeddings(type) for type in args.
 if args.char_embeddings:
      embedding_types.append(CharacterEmbeddings())
 embedding_types.extend([FlairEmbeddings(type) for type in args.flair_embeddings])
+embedding_types.extend([PooledFlairEmbeddings(type, pooling) for type, pooling in args.pooled_flair_embeddings])
 
 if len(embedding_types) == 0:
     raise ValueError('Must specify at least one embedding type!')

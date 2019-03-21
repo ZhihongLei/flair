@@ -629,6 +629,27 @@ class CharacterEmbeddings(TokenEmbeddings):
         return self.name
 
 
+
+
+class TagEmbeddings(TokenEmbeddings):
+    """Non-static word-level embeddings of semantic tags"""
+    def __init__(self,
+                 num_tags,
+                 embedding_length
+                 ):
+        self.num_tags = num_tags
+        self.__embedding_length = embedding_length
+        self.embeddings = torch.torch.nn.Embedding(self.num_tags, self.embedding_length)
+        
+    @property
+    def embedding_length(self)->int:
+        return self.__embedding_length
+    
+    @property
+    def embedding_type(self)->str:
+        return 'non-static-tag'
+
+
 class FlairEmbeddings(TokenEmbeddings):
     """Contextual string embeddings of words, as proposed in Akbik et al., 2018."""
 
