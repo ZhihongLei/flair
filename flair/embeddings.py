@@ -261,6 +261,59 @@ class WordEmbeddings(TokenEmbeddings):
         return self.name
 
 
+class NonStaticWordEmbeddings(TokenEmbeddings):
+    """Non-static word-level embeddings"""
+    def __init__(self,
+                 embedding_length: int,
+                 field: str,
+                 dictionary: Dictionary,
+                 ):
+        super().__init__()
+        self.num_words = len(dictionary)
+        self.__embedding_length = embedding_length
+        self.field = field
+        self.dictionary = dictionary
+        self.embeddings = torch.torch.nn.Embedding(self.num_words, self.embedding_length)
+        self.static_embeddings = False
+        self.name = 'non-static-word' if self.field is None else 'tag-{}'.format(self.field)
+        self.to(flair.device)
+        
+    @property
+    def embedding_length(self)->int:
+        return self.__embedding_length
+    
+    
+    def _add_embeddings_internal(self, sentences: List[Sentence]):
+        for i, sentence in enumerate(sentences):
+
+            for token, token_idx in zip(sentence.tokens, range(len(sentence.tokens))):
+                token: Token = token
+
+                if 'field' not in self.__dict__ or self.field is None:
+                    word = token.text
+                else:
+                    word = token.get_tag(self.field).value
+                
+                if word in self.dictionary:
+                    pass
+                elif word.lower() in self.dictionary:
+                    word = word.lower()
+                elif re.sub(r'\d', '#', word.lower()) in self.dictionary:
+                    word = re.sub(r'\d', '#', word.lower())
+                elif re.sub(r'\d', '0', word.lower()) in self.dictionary:
+                    word = re.sub(r'\d', '0', word.lower())
+                else:
+                    word = '<unk>'
+                    assert word in self.dictionary
+
+                lookup_tensor = torch.tensor(self.dictionary.get_idx_for_item(word), dtype=torch.long)
+                word_embedding = self.embeddings(lookup_tensor)
+
+                token.set_embedding(self.name, word_embedding)
+        #print(self.embeddings(torch.tensor(21, dtype=torch.long)))
+        return sentences
+
+
 class BPEmbSerializable(BPEmb):
 
     def __getstate__(self):
@@ -628,26 +681,6 @@ class CharacterEmbeddings(TokenEmbeddings):
     def __str__(self):
         return self.name
 
-
-
-
-class TagEmbeddings(TokenEmbeddings):
-    """Non-static word-level embeddings of semantic tags"""
-    def __init__(self,
-                 num_tags,
-                 embedding_length
-                 ):
-        self.num_tags = num_tags
-        self.__embedding_length = embedding_length
-        self.embeddings = torch.torch.nn.Embedding(self.num_tags, self.embedding_length)
-        
-    @property
-    def embedding_length(self)->int:
-        return self.__embedding_length
-    
-    @property
-    def embedding_type(self)->str:
-        return 'non-static-tag'
 
 
 class FlairEmbeddings(TokenEmbeddings):

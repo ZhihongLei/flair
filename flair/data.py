@@ -97,6 +97,12 @@ class Dictionary:
         return Dictionary.load_from_file(name)
 
 
+    def __contains__(self, s: Union[str, bytes]):
+        if isinstance(s, str):
+            return s.encode('utf-8') in self.item2idx
+        if isinstance(s, bytes):
+            return s in self.item2idx
+
 class Label:
     """
     This class represents a label of a sentence. Each label has a value and optionally a confidence score. The
@@ -190,7 +196,7 @@ class Token:
 
     def get_embedding(self) -> torch.tensor:
         embeddings = [self._embeddings[embed] for embed in sorted(self._embeddings.keys())]
-
+        #embeddings = [self._embeddings['tag-pos'] for _ in range(5)]
         if embeddings:
             return torch.cat(embeddings, dim=0)
 

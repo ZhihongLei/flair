@@ -181,6 +181,10 @@ class SequenceTagger(flair.nn.Model):
             'use_word_dropout': self.use_word_dropout,
             'use_locked_dropout': self.use_locked_dropout,
         }
+        if isinstance(self, SequenceTaggerWithAdditionalTags):
+            assert hasattr(self, 'additional_tag_embeddings') and hasattr(self, 'additional_tag_dictionaries')
+            model_state['additional_tag_embeddings'] = self.additional_tag_embeddings
+            model_state['additional_tag_dictionaries'] = self.additional_tag_dictionaries
 
         self.save_torch_model(model_state, str(model_file), self.pickle_module)
 
@@ -202,6 +206,10 @@ class SequenceTagger(flair.nn.Model):
             'epoch': epoch,
             'loss': loss
         }
+        if isinstance(self, SequenceTaggerWithAdditionalTags):
+            assert hasattr(self, 'additional_tag_embeddings') and hasattr(self, 'additional_tag_dictionaries')
+            model_state['additional_tag_embeddings'] = self.additional_tag_embeddings
+            model_state['additional_tag_dictionaries'] = self.additional_tag_dictionaries
 
         self.save_torch_model(model_state, str(model_file), self.pickle_module)
 
@@ -213,18 +221,34 @@ class SequenceTagger(flair.nn.Model):
         use_word_dropout = 0.0 if not 'use_word_dropout' in state.keys() else state['use_word_dropout']
         use_locked_dropout = 0.0 if not 'use_locked_dropout' in state.keys() else state['use_locked_dropout']
 
-        model = SequenceTagger(
-            hidden_size=state['hidden_size'],
-            embeddings=state['embeddings'],
-            tag_dictionary=state['tag_dictionary'],
-            tag_type=state['tag_type'],
-            use_crf=state['use_crf'],
-            use_rnn=state['use_rnn'],
-            rnn_layers=state['rnn_layers'],
-            dropout=use_dropout,
-            word_dropout=use_word_dropout,
-            locked_dropout=use_locked_dropout,
-        )
+        if 'additional_tag_embeddings' in state and 'additional_tag_dictionaries' in state:
+            model = SequenceTaggerWithAdditionalTags(
+                hidden_size=state['hidden_size'],
+                embeddings=state['embeddings'],
+                tag_dictionary=state['tag_dictionary'],
+                additional_tag_embeddings=state['additional_tag_embeddings'],
+                additional_tag_dictionaries=state['additional_tag_dictionaries'],
+                tag_type=state['tag_type'],
+                use_crf=state['use_crf'],
+                use_rnn=state['use_rnn'],
+                rnn_layers=state['rnn_layers'],
+                dropout=use_dropout,
+                word_dropout=use_word_dropout,
+                locked_dropout=use_locked_dropout,
+            )
+        else:
+            model = SequenceTagger(
+                hidden_size=state['hidden_size'],
+                embeddings=state['embeddings'],
+                tag_dictionary=state['tag_dictionary'],
+                tag_type=state['tag_type'],
+                use_crf=state['use_crf'],
+                use_rnn=state['use_rnn'],
+                rnn_layers=state['rnn_layers'],
+                dropout=use_dropout,
+                word_dropout=use_word_dropout,
+                locked_dropout=use_locked_dropout,
+            )
         model.load_state_dict(state['state_dict'])
         model.eval()
         model.to(flair.device)
@@ -679,10 +703,10 @@ class SequenceTagger(flair.nn.Model):
 class SequenceTaggerWithAdditionalTags(SequenceTagger):
     def __init__(self,
                  hidden_size: int,
-                 word_embeddings: flair.embeddings.TokenEmbeddings,
+                 embeddings: flair.embeddings.TokenEmbeddings,
                  tag_dictionary: Dictionary,
                  tag_type: str,
-                 additional_embeddings: List[flair.embeddings.TokenEmbeddings],
+                 additional_tag_embeddings: List[flair.embeddings.TokenEmbeddings],
                  additional_tag_dictionaries: List[Dictionary],
                  use_crf: bool = True,
                  use_rnn: bool = True,
@@ -694,28 +718,98 @@ class SequenceTaggerWithAdditionalTags(SequenceTagger):
                  pickle_module: str = 'pickle'
                  ):
         
-        self.additional_embeddings = additional_embeddings
-        self.additional_tag_dictionaries = additional_tag_dictionaries
-        self.additional_tag_sizes = [len(d) for d in additional_tag_dictionaries]
+
         
-        super(SequenceTaggerWithAdditionalTags, self).__init__(hidden_size, 
-                                                               word_embeddings, 
-                                                               tag_dictionary,
-                                                               tag_type,
-                                                               use_crf,
-                                                               use_rnn,
-                                                               rnn_layers,
-                                                               dropout,
-                                                               rnn_dropout,
-                                                               word_dropout,
-                                                               locked_dropout,
-                                                               pickle_module)
+        super(SequenceTagger, self).__init__()
+        
+
+        self.use_rnn = use_rnn
+        self.hidden_size = hidden_size
+        self.use_crf: bool = use_crf
+        self.rnn_layers: int = rnn_layers
+
+        self.trained_epochs: int = 0
+
+        self.embeddings = embeddings
+
+        # set the dictionaries
+        self.tag_dictionary: Dictionary = tag_dictionary
+        self.tag_type: str = tag_type
+        self.tagset_size: int = len(tag_dictionary)
+        
+        self.additional_tag_embeddings = additional_tag_embeddings
+        self.additional_tag_dictionaries = additional_tag_dictionaries
+
+
+        self.embedding_length = self.embeddings.embedding_length
+        for additional_tag_embedding in self.additional_tag_embeddings:
+            #self.register_parameter(additional_tag_embedding.name, additional_tag_embedding.embeddings.weight)
+            self.embedding_length += additional_tag_embedding.embedding_length
+            
+        # initialize the network architecture
+        self.nlayers: int = rnn_layers
+        self.hidden_word = None
+
+        # dropouts
+        self.use_dropout: float = dropout
+        self.use_word_dropout: float = word_dropout
+        self.use_locked_dropout: float = locked_dropout
+
+        self.pickle_module = pickle_module
+
+        if dropout > 0.0:
+            self.dropout = torch.nn.Dropout(dropout)
+
+        if word_dropout > 0.0:
+            self.word_dropout = flair.nn.WordDropout(word_dropout)
+
+        if locked_dropout > 0.0:
+            self.locked_dropout = flair.nn.LockedDropout(locked_dropout)
+
+        rnn_input_dim: int = self.embedding_length
+
+        self.relearn_embeddings: bool = True
+
+        if self.relearn_embeddings:
+            self.embedding2nn = torch.nn.Linear(rnn_input_dim, rnn_input_dim)
+
+        # bidirectional LSTM on top of embedding layer
+        self.rnn_type = 'LSTM'
+        if self.rnn_type in ['LSTM', 'GRU']:
+
+            if self.nlayers == 1:
+                self.rnn = getattr(torch.nn, self.rnn_type)(rnn_input_dim, hidden_size,
+                                                            num_layers=self.nlayers,
+                                                            bidirectional=True)
+            else:
+                self.rnn = getattr(torch.nn, self.rnn_type)(rnn_input_dim, hidden_size,
+                                                            num_layers=self.nlayers,
+                                                            dropout=rnn_dropout,
+                                                            bidirectional=True)
+
+        # final linear map to tag space
+        if self.use_rnn:
+            self.linear = torch.nn.Linear(hidden_size * 2, len(tag_dictionary))
+        else:
+            self.linear = torch.nn.Linear(self.embedding_length, len(tag_dictionary))
+
+        if self.use_crf:
+            self.transitions = torch.nn.Parameter(
+                torch.randn(self.tagset_size, self.tagset_size))
+            self.transitions.detach()[self.tag_dictionary.get_idx_for_item(START_TAG), :] = -10000
+            self.transitions.detach()[:, self.tag_dictionary.get_idx_for_item(STOP_TAG)] = -10000
+
+        self.to(flair.device)
+
 
 
     def forward(self, sentences: List[Sentence], sort=True):
         self.zero_grad()
 
         self.embeddings.embed(sentences)
+        for additional_tag_embedding in self.additional_tag_embeddings:
+            additional_tag_embedding.embed(sentences)
+            #print('Embedding norm: {}'.format( additional_tag_embedding.embeddings.weight.norm()))
 
         # if sorting is enabled, sort sentences by number of tokens
         if sort:
@@ -728,9 +822,9 @@ class SequenceTaggerWithAdditionalTags(SequenceTagger):
         # initialize zero-padded word embeddings tensor
         sentence_tensor = torch.zeros([len(sentences),
                                        longest_token_sequence_in_batch,
-                                       self.embeddings.embedding_length],
+                                       self.embedding_length],
                                       dtype=torch.float, device=flair.device)
-
+        
         for s_id, sentence in enumerate(sentences):
 
             # fill values with word embeddings
