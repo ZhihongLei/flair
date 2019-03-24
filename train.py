@@ -41,7 +41,7 @@ parser.add_argument('--hidden-size', type=int, default=256, help='Hidden layer s
 parser.add_argument('--num-hidden-layers', type=int, default=1, help='Number of hidden layers')
 parser.add_argument('--dropout-rate', type=float, default=0.0, help='Dropout rate')
 parser.add_argument('--optimizer', default='sgd', choices=['sgd', 'adam'], help='Type of optimizer')
-parser.add_argument('--init-lr', type=float, required=True, help='Initial learning rate')
+parser.add_argument('--init-lr', type=float, default=0.1, help='Initial learning rate')
 parser.add_argument('--num-epochs', type=int, default=20, help='Number of epochs')
 #parser.add_argument('--data-dir', required=True, help='Data dir')
 parser.add_argument('--working-dir', default='.', help='Working directory where outputs are stored')
@@ -82,7 +82,7 @@ if len(embedding_types) == 0:
 embeddings: StackedEmbeddings = StackedEmbeddings(embeddings=embedding_types)
 
 # 1. get the corpus
-corpus: TaggedCorpus = NLPTaskDataFetcher.load_corpus(NLPTask.CONLL_03, '/u/lei/work/data')
+corpus: TaggedCorpus = NLPTaskDataFetcher.load_corpus(NLPTask.CONLL_03, '/Users/zhihonglei/work/hiwi')
 #print('Reading data from {} ...'.format(args.data_dir))
 #corpus: TaggedCorpus = NLPTaskDataFetcher.load_column_corpus(args.data_dir, {0: 'text', 1: 'ner'}, tag_to_biloes='ner')
 print(corpus)

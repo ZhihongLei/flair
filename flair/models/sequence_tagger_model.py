@@ -108,9 +108,8 @@ class SequenceTagger(flair.nn.Model):
         #assert len(self.additional_tag_embeddings) == len(self.additional_tag_dictionaries)
         
         self.embedding_length = self.embeddings.embedding_length
-        if self.additional_tag_embeddings is not None:
-            for additional_tag_embedding in self.additional_tag_embeddings:
-                self.embedding_length += additional_tag_embedding.embedding_length
+        for additional_tag_embedding in self.additional_tag_embeddings:
+            self.embedding_length += additional_tag_embedding.embedding_length
             
         # initialize the network architecture
         self.nlayers: int = rnn_layers
