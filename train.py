@@ -132,10 +132,9 @@ tagger: SequenceTagger = SequenceTagger(hidden_size=args.hidden_size,
                                         rnn_layers=args.num_hidden_layers,
                                         rnn_dropout=args.dropout_rate)
 
-#for name, _ in additional_tag_embeddings[0].named_parameters():
-#    print(name)
-print(tagger.parameters)
-print(tagger.state_dict().keys())
+
+#print(tagger.parameters)
+#print(tagger.state_dict().keys())
 # initialize trainer
 from flair.trainers import ModelTrainer
 trainer: ModelTrainer = ModelTrainer(tagger, corpus, optimizer)
