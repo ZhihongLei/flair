@@ -28,7 +28,7 @@ from flair.data_fetcher import NLPTaskDataFetcher, NLPTask
 from flair.data import TaggedCorpus
 from flair.training_utils import EvaluationMetric
 from flair.trainers import ModelTrainer
-from flair.models import SequenceTaggerWithAdditionalTags, SequenceTagger
+from flair.models import SequenceTagger
 
 
 corpus: TaggedCorpus = NLPTaskDataFetcher.load_corpus(NLPTask.CONLL_03, '/u/lei/work/data')
