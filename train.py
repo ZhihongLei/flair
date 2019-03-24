@@ -6,6 +6,12 @@ import torch
 from torch.optim.adam import Adam
 from torch.optim.sgd import SGD
 
+torch.manual_seed(0)
+torch.backends.cudnn.deterministic = True
+torch.backends.cudnn.benchmark = False
+import numpy as np
+np.random.seed(0)
+
 
 def pooled_embeddings(s):
     try:
@@ -16,11 +22,21 @@ def pooled_embeddings(s):
         return embedding, pooling
     raise argparse.ArgumentTypeError('PoolingType must be chosen from: max, min, mean or fade.')
 
+
+def additional_embeddings(s):
+    try:
+        embedding, size = s.split(',')
+        size = int(size)
+    except:
+        raise argparse.ArgumentTypeError('Additional embeddings should be TagName,EmbeddingSize.')
+    return embedding, size
+
 parser = argparse.ArgumentParser(description='Train Flair NER model')
 parser.add_argument('--word-embeddings', nargs='*', help='Type(s) of word embeddings')
 parser.add_argument('--char-embeddings', action='store_true', help='Character embeddings trained on task corpus, Lample 2016')
 parser.add_argument('--flair-embeddings', nargs='*', help='Type(s) of Flair embeddings')
 parser.add_argument('--pooled-flair-embeddings', nargs='*', type=pooled_embeddings, help="Type(s) of pooled Flair embeddings")
+parser.add_argument('--additional-embeddings', nargs='*', type=additional_embeddings, help="Type(s) of additional input tag embeddings")
 parser.add_argument('--hidden-size', type=int, default=256, help='Hidden layer size')
 parser.add_argument('--num-hidden-layers', type=int, default=1, help='Number of hidden layers')
 parser.add_argument('--dropout-rate', type=float, default=0.0, help='Dropout rate')
@@ -46,7 +62,8 @@ except:
 
 from flair.data_fetcher import NLPTaskDataFetcher, NLPTask
 from flair.data import TaggedCorpus
-from flair.embeddings import TokenEmbeddings, WordEmbeddings, StackedEmbeddings, CharacterEmbeddings, FlairEmbeddings, PooledFlairEmbeddings
+from flair.embeddings import TokenEmbeddings, WordEmbeddings, StackedEmbeddings, CharacterEmbeddings, \
+                            FlairEmbeddings, PooledFlairEmbeddings, NonStaticWordEmbeddings
 from flair.training_utils import EvaluationMetric
 from flair.visual.training_curves import Plotter
 
@@ -62,12 +79,13 @@ if args.pooled_flair_embeddings:
 if len(embedding_types) == 0:
     raise ValueError('Must specify at least one embedding type!')
 
+embeddings: StackedEmbeddings = StackedEmbeddings(embeddings=embedding_types)
+
 # 1. get the corpus
-corpus: TaggedCorpus = NLPTaskDataFetcher.load_corpus(NLPTask.CONLL_03, '/u/lei/work/data')
+corpus: TaggedCorpus = NLPTaskDataFetcher.load_corpus(NLPTask.CONLL_03, '/Users/zhihonglei/work/hiwi')
 #print('Reading data from {} ...'.format(args.data_dir))
 #corpus: TaggedCorpus = NLPTaskDataFetcher.load_column_corpus(args.data_dir, {0: 'text', 1: 'ner'}, tag_to_biloes='ner')
 print(corpus)
-
 # 2. what tag do we want to predict?
 tag_type = 'ner'
 
@@ -76,7 +94,15 @@ tag_dictionary = corpus.make_tag_dictionary(tag_type=tag_type)
 print(tag_dictionary.idx2item)
 
 
-embeddings: StackedEmbeddings = StackedEmbeddings(embeddings=embedding_types)
+additional_tag_dictionaries = []
+additional_tag_embeddings = []
+if args.additional_embeddings:
+    for tag, size in args.additional_embeddings:
+        d = corpus.make_tag_dictionary(tag_type=tag)
+        additional_tag_dictionaries.append(d)
+        additional_tag_embeddings.append(NonStaticWordEmbeddings(size, tag, d))
+    additional_tag_embeddings = torch.nn.ModuleList(additional_tag_embeddings)
+    for d in additional_tag_dictionaries: print(d.idx2item)
 
 if args.optimizer == 'sgd':
     optimizer = SGD
@@ -87,7 +113,8 @@ elif args.optimizer == 'adam':
 else:
     raise ValueError('Cannot recognize optimizer {}'.format(args.optimizer))
 
-print('Using embeddings: {}'.format(str(embedding_types)))
+print('Using word embeddings: {}'.format(str(embedding_types)))
+print('Using additional tag embeddings: {}'.format(str(additional_tag_embeddings)))
 print('Using {}'.format(args.optimizer))
 print('Initial learning rate: {}'.format(args.init_lr))
 print('{} hidden layers of size {}'.format(args.num_hidden_layers, args.hidden_size))
@@ -98,11 +125,17 @@ from flair.models import SequenceTagger
 tagger: SequenceTagger = SequenceTagger(hidden_size=args.hidden_size,
                                         embeddings=embeddings,
                                         tag_dictionary=tag_dictionary,
+                                        additional_tag_embeddings=additional_tag_embeddings,
+                                        additional_tag_dictionaries=additional_tag_dictionaries,
                                         tag_type=tag_type,
                                         use_crf=True,
                                         rnn_layers=args.num_hidden_layers,
                                         rnn_dropout=args.dropout_rate)
 
+#for name, _ in additional_tag_embeddings[0].named_parameters():
+#    print(name)
+print(tagger.parameters)
+print(tagger.state_dict().keys())
 # initialize trainer
 from flair.trainers import ModelTrainer
 trainer: ModelTrainer = ModelTrainer(tagger, corpus, optimizer)

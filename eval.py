@@ -3,13 +3,6 @@ import os
 import argparse
 from pathlib import Path
 
-from torch.optim.sgd import SGD
-from flair.data_fetcher import NLPTaskDataFetcher, NLPTask
-from flair.data import TaggedCorpus
-from flair.training_utils import EvaluationMetric
-from flair.trainers import ModelTrainer
-from flair.models import SequenceTaggerWithAdditionalTags, SequenceTagger
-
 
 parser = argparse.ArgumentParser(description='Train Flair NER model')
 parser.add_argument('--working-dir', default='.', help='Working directory where outputs are stored')
@@ -30,7 +23,15 @@ except:
 working_dir = args.working_dir
 
 
-corpus: TaggedCorpus = NLPTaskDataFetcher.load_corpus(NLPTask.CONLL_03, '/u/lei/work/data')
+from torch.optim.sgd import SGD
+from flair.data_fetcher import NLPTaskDataFetcher, NLPTask
+from flair.data import TaggedCorpus
+from flair.training_utils import EvaluationMetric
+from flair.trainers import ModelTrainer
+from flair.models import SequenceTaggerWithAdditionalTags, SequenceTagger
+
+
+corpus: TaggedCorpus = NLPTaskDataFetcher.load_corpus(NLPTask.CONLL_03, '/Users/zhihonglei/work/hiwi')
 
 tag_type = 'ner'
 tag_dictionary = corpus.make_tag_dictionary(tag_type=tag_type)
