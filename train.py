@@ -82,7 +82,7 @@ if len(embedding_types) == 0:
 embeddings: StackedEmbeddings = StackedEmbeddings(embeddings=embedding_types)
 
 # 1. get the corpus
-corpus: TaggedCorpus = NLPTaskDataFetcher.load_corpus(NLPTask.CONLL_03, '/Users/zhihonglei/work/hiwi')
+corpus: TaggedCorpus = NLPTaskDataFetcher.load_corpus(NLPTask.CONLL_03, '/u/lei/work/data')
 #print('Reading data from {} ...'.format(args.data_dir))
 #corpus: TaggedCorpus = NLPTaskDataFetcher.load_column_corpus(args.data_dir, {0: 'text', 1: 'ner'}, tag_to_biloes='ner')
 print(corpus)
