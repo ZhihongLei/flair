@@ -308,7 +308,7 @@ class NonStaticWordEmbeddings(TokenEmbeddings):
 
                 lookup_tensor = torch.tensor(self.dictionary.get_idx_for_item(word), dtype=torch.long)
                 word_embedding = self.embeddings(lookup_tensor)
-
+                word_embedding = word_embedding.to(flair.device)
                 token.set_embedding(self.name, word_embedding)
         #print(self.embeddings(torch.tensor(21, dtype=torch.long)))
         return sentences
