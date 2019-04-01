@@ -61,8 +61,19 @@ from flair.embeddings import TokenEmbeddings, WordEmbeddings, StackedEmbeddings,
 from flair.training_utils import EvaluationMetric
 from flair.visual.training_curves import Plotter
 
+
+# 1. get the corpus
+corpus: TaggedCorpus = NLPTaskDataFetcher.load_corpus(NLPTask.CONLL_03, '/Users/zhihonglei/work/hiwi')
+#print('Reading data from {} ...'.format(args.data_dir))
+#corpus: TaggedCorpus = NLPTaskDataFetcher.load_column_corpus(args.data_dir, {0: 'text', 1: 'ner'}, tag_to_biloes='ner')
+print(corpus)
+# 2. what tag do we want to predict?
+tag_type = 'ner'
+
 # initialize embeddings
-embedding_types: List[TokenEmbeddings] = [WordEmbeddings(type) for type in args.word_embeddings]
+embedding_types: List[TokenEmbeddings] = [WordEmbeddings(type) if type!='task-trained' \
+                                            else NonStaticWordEmbeddings(100, corpus.make_vocab_dictionary(min_freq=2)) \
+                                          for type in args.word_embeddings]
 if args.char_embeddings:
      embedding_types.append(CharacterEmbeddings())
 if args.flair_embeddings:
@@ -75,13 +86,7 @@ if len(embedding_types) == 0:
 
 embeddings: StackedEmbeddings = StackedEmbeddings(embeddings=embedding_types)
 
-# 1. get the corpus
-corpus: TaggedCorpus = NLPTaskDataFetcher.load_corpus(NLPTask.CONLL_03, '/u/lei/work/data')
-#print('Reading data from {} ...'.format(args.data_dir))
-#corpus: TaggedCorpus = NLPTaskDataFetcher.load_column_corpus(args.data_dir, {0: 'text', 1: 'ner'}, tag_to_biloes='ner')
-print(corpus)
-# 2. what tag do we want to predict?
-tag_type = 'ner'
+
 
 # 3. make the tag dictionary from the corpus
 tag_dictionary = corpus.make_tag_dictionary(tag_type=tag_type)
@@ -94,7 +99,7 @@ if args.additional_embeddings:
     for tag, size in args.additional_embeddings:
         d = corpus.make_tag_dictionary(tag_type=tag)
         additional_tag_dictionaries.append(d)
-        additional_tag_embeddings.append(NonStaticWordEmbeddings(size, tag, d))
+        additional_tag_embeddings.append(NonStaticWordEmbeddings(size, d, tag))
     additional_tag_embeddings = torch.nn.ModuleList(additional_tag_embeddings)
     for d in additional_tag_dictionaries: print(d.idx2item)
 

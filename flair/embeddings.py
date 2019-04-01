@@ -265,8 +265,8 @@ class NonStaticWordEmbeddings(TokenEmbeddings):
     """Non-static word-level embeddings"""
     def __init__(self,
                  embedding_length: int,
-                 field: str,
                  dictionary: Dictionary,
+                 field: str = None,
                  ):
         super().__init__()
         self.num_words = len(dictionary)
