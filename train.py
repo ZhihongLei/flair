@@ -36,6 +36,7 @@ def def_task(s):
 
 parser = argparse.ArgumentParser(description='Train Flair NER model')
 parser.add_argument('--task', type=def_task, required=True, help='Task and data path')
+parser.add_argument('--tag-type', required=True, help='Tag type to train')
 parser.add_argument('--word-embeddings', nargs='*', help='Type(s) of word embeddings')
 parser.add_argument('--char-embeddings', action='store_true', help='Character embeddings trained on task corpus, Lample 2016')
 parser.add_argument('--flair-embeddings', nargs='*', help='Type(s) of Flair embeddings')
@@ -86,7 +87,7 @@ corpus: TaggedCorpus = NLPTaskDataFetcher.load_corpus(task, path)
 #corpus: TaggedCorpus = NLPTaskDataFetcher.load_column_corpus(args.data_dir, {0: 'text', 1: 'ner'}, tag_to_biloes='ner')
 print(corpus)
 # 2. what tag do we want to predict?
-tag_type = 'ner'
+tag_type = args.tag_type
 
 # initialize embeddings
 embedding_types: List[TokenEmbeddings] = [WordEmbeddings(type) if type!='task-trained' \
