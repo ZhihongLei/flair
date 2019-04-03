@@ -81,7 +81,8 @@ class SequenceTagger(flair.nn.Model):
                  rnn_dropout: float = 0.0, 
                  word_dropout: float = 0.05,
                  locked_dropout: float = 0.5,
-                 pickle_module: str = 'pickle'
+                 pickle_module: str = 'pickle',
+                 relearn_embeddings: bool =True,
                  ):
         
 
@@ -133,7 +134,7 @@ class SequenceTagger(flair.nn.Model):
 
         rnn_input_dim: int = self.embedding_length
 
-        self.relearn_embeddings: bool = True
+        self.relearn_embeddings: bool = relearn_embeddings
 
         if self.relearn_embeddings:
             self.embedding2nn = torch.nn.Linear(rnn_input_dim, rnn_input_dim)
@@ -196,6 +197,7 @@ class SequenceTagger(flair.nn.Model):
             'rnn_layers': self.rnn_layers,
             'use_word_dropout': self.use_word_dropout,
             'use_locked_dropout': self.use_locked_dropout,
+            'relearn_embeddings': self.relearn_embeddings
         }
 
         self.save_torch_model(model_state, str(model_file), self.pickle_module)
@@ -215,6 +217,7 @@ class SequenceTagger(flair.nn.Model):
             'rnn_layers': self.rnn_layers,
             'use_word_dropout': self.use_word_dropout,
             'use_locked_dropout': self.use_locked_dropout,
+            'relearn_embeddings': self.relearn_embeddings,
             'optimizer_state_dict': optimizer_state,
             'scheduler_state_dict': scheduler_state,
             'epoch': epoch,
@@ -244,6 +247,7 @@ class SequenceTagger(flair.nn.Model):
             dropout=use_dropout,
             word_dropout=use_word_dropout,
             locked_dropout=use_locked_dropout,
+            relearn_embeddings=state['relearn_embeddings']
             )
         model.load_state_dict(state['state_dict'])
         model.eval()

@@ -48,7 +48,6 @@ parser.add_argument('--dropout-rate', type=float, default=0.0, help='Dropout rat
 parser.add_argument('--optimizer', default='sgd', choices=['sgd', 'adam'], help='Type of optimizer')
 parser.add_argument('--init-lr', type=float, default=0.1, help='Initial learning rate')
 parser.add_argument('--num-epochs', type=int, default=20, help='Number of epochs')
-#parser.add_argument('--data-dir', required=True, help='Data dir')
 parser.add_argument('--working-dir', default='.', help='Working directory where outputs are stored')
 
 args = parser.parse_args()
@@ -73,7 +72,6 @@ from flair.training_utils import EvaluationMetric
 from flair.visual.training_curves import Plotter
 
 
-# 1. get the corpus
 task_name, path = args.task
 if task_name == 'conll03':
     task = NLPTask.CONLL_03
@@ -83,10 +81,7 @@ else:
     raise NotImplementedError('{} is not implemented yet'.format(task_name))
 print('Task {}'.format(task.value))
 corpus: TaggedCorpus = NLPTaskDataFetcher.load_corpus(task, path)
-#print('Reading data from {} ...'.format(args.data_dir))
-#corpus: TaggedCorpus = NLPTaskDataFetcher.load_column_corpus(args.data_dir, {0: 'text', 1: 'ner'}, tag_to_biloes='ner')
 print(corpus)
-# 2. what tag do we want to predict?
 tag_type = args.tag_type
 
 # initialize embeddings
@@ -107,7 +102,6 @@ embeddings: StackedEmbeddings = StackedEmbeddings(embeddings=embedding_types)
 
 
 
-# 3. make the tag dictionary from the corpus
 tag_dictionary = corpus.make_tag_dictionary(tag_type=tag_type)
 print(tag_dictionary.idx2item)
 
@@ -140,6 +134,10 @@ print('Dropout rate: {}'.format(args.dropout_rate))
 # initialize sequence tagger
 from flair.models import SequenceTagger
 
+if len(args.word_embeddings) == 1 and args.word_embeddings[0] == 'task-trained':
+    relearn_embeddings = False  
+else: relearn_embeddings = True
+
 tagger: SequenceTagger = SequenceTagger(hidden_size=args.hidden_size,
                                         embeddings=embeddings,
                                         tag_dictionary=tag_dictionary,
@@ -148,12 +146,12 @@ tagger: SequenceTagger = SequenceTagger(hidden_size=args.hidden_size,
                                         tag_type=tag_type,
                                         use_crf=True,
                                         rnn_layers=args.num_hidden_layers,
-                                        rnn_dropout=args.dropout_rate)
+                                        rnn_dropout=args.dropout_rate,
+                                        relearn_embeddings=relearn_embeddings)
 
 
 #print(tagger.parameters)
 #print(tagger.state_dict().keys())
-# initialize trainer
 from flair.trainers import ModelTrainer
 trainer: ModelTrainer = ModelTrainer(tagger, corpus, optimizer)
 
