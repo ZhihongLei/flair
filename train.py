@@ -128,6 +128,7 @@ else:
 
 print('Using word embeddings: {}'.format(str(embedding_types)))
 print('Using additional tag embeddings: {}'.format(str(additional_tag_embeddings)))
+Print('Re-learning embeddings: {}'.format(args.relearn_embeddings))
 print('Using {}'.format(args.optimizer))
 print('Initial learning rate: {}'.format(args.init_lr))
 print('{} hidden layers of size {}'.format(args.num_hidden_layers, args.hidden_size))
