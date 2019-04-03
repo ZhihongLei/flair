@@ -9,9 +9,9 @@ from torch.optim.sgd import SGD
 
 def def_pooled_embeddings(s):
     try:
-        embedding, pooling = s.split(',')
+        embedding, pooling = s.split(':')
     except:
-        raise argparse.ArgumentTypeError('Pooled Embeddings should be in format: EmbeddingType,PoolingType.')
+        raise argparse.ArgumentTypeError('Pooled Embeddings should be in format: EmbeddingType:PoolingType.')
     if pooling == 'max' or pooling == 'min' or pooling == 'mean' or pooling == 'fade':
         return embedding, pooling
     raise argparse.ArgumentTypeError('PoolingType must be chosen from: max, min, mean or fade.')
@@ -19,18 +19,18 @@ def def_pooled_embeddings(s):
 
 def def_additional_embeddings(s):
     try:
-        embedding, size = s.split(',')
+        embedding, size = s.split(':')
         size = int(size)
     except:
-        raise argparse.ArgumentTypeError('Additional embeddings should be in format: TagName,EmbeddingSize.')
+        raise argparse.ArgumentTypeError('Additional embeddings should be in format: TagName:EmbeddingSize.')
     return embedding, size
 
 
 def def_task(s):
     try:
-        task, path = s.split(',')
+        task, path = s.split(':')
     except:
-        raise argparse.ArgumentTypeError('Task should be in format: TaskName,DataPath.')
+        raise argparse.ArgumentTypeError('Task should be in format: TaskName:DataPath.')
     return task, path
 
 
