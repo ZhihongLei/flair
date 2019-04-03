@@ -7,30 +7,40 @@ from torch.optim.adam import Adam
 from torch.optim.sgd import SGD
 
 
-def pooled_embeddings(s):
+def def_pooled_embeddings(s):
     try:
         embedding, pooling = s.split(',')
     except:
-        raise argparse.ArgumentTypeError('Pooled Embeddings should be EmbeddingType,PoolingType.')
+        raise argparse.ArgumentTypeError('Pooled Embeddings should be in format: EmbeddingType,PoolingType.')
     if pooling == 'max' or pooling == 'min' or pooling == 'mean' or pooling == 'fade':
         return embedding, pooling
     raise argparse.ArgumentTypeError('PoolingType must be chosen from: max, min, mean or fade.')
 
 
-def additional_embeddings(s):
+def def_additional_embeddings(s):
     try:
         embedding, size = s.split(',')
         size = int(size)
     except:
-        raise argparse.ArgumentTypeError('Additional embeddings should be TagName,EmbeddingSize.')
+        raise argparse.ArgumentTypeError('Additional embeddings should be in format: TagName,EmbeddingSize.')
     return embedding, size
 
+
+def def_task(s):
+    try:
+        task, path = s.split(',')
+    except:
+        raise argparse.ArgumentTypeError('Task should be in format: TaskName,DataPath.')
+    return task, path
+
+
 parser = argparse.ArgumentParser(description='Train Flair NER model')
+parser.add_argument('--task', type=def_task, required=True, help='Task and data path')
 parser.add_argument('--word-embeddings', nargs='*', help='Type(s) of word embeddings')
 parser.add_argument('--char-embeddings', action='store_true', help='Character embeddings trained on task corpus, Lample 2016')
 parser.add_argument('--flair-embeddings', nargs='*', help='Type(s) of Flair embeddings')
-parser.add_argument('--pooled-flair-embeddings', nargs='*', type=pooled_embeddings, help="Type(s) of pooled Flair embeddings")
-parser.add_argument('--additional-embeddings', nargs='*', type=additional_embeddings, help="Type(s) of additional input tag embeddings")
+parser.add_argument('--pooled-flair-embeddings', nargs='*', type=def_pooled_embeddings, help="Type(s) of pooled Flair embeddings")
+parser.add_argument('--additional-embeddings', nargs='*', type=def_additional_embeddings, help="Type(s) of additional input tag embeddings")
 parser.add_argument('--hidden-size', type=int, default=256, help='Hidden layer size')
 parser.add_argument('--num-hidden-layers', type=int, default=1, help='Number of hidden layers')
 parser.add_argument('--dropout-rate', type=float, default=0.0, help='Dropout rate')
@@ -63,7 +73,15 @@ from flair.visual.training_curves import Plotter
 
 
 # 1. get the corpus
-corpus: TaggedCorpus = NLPTaskDataFetcher.load_corpus(NLPTask.CONLL_03, '/u/lei/work/data')
+task_name, path = args.task
+if task_name == 'conll03':
+    task = NLPTask.CONLL_03
+elif task_name == 'ontoner':
+    task = NLPTask.ONTONER
+else:
+    raise NotImplementedError('{} is not implemented yet'.format(task_name))
+print('Task {}'.format(task.value))
+corpus: TaggedCorpus = NLPTaskDataFetcher.load_corpus(task, path)
 #print('Reading data from {} ...'.format(args.data_dir))
 #corpus: TaggedCorpus = NLPTaskDataFetcher.load_column_corpus(args.data_dir, {0: 'text', 1: 'ner'}, tag_to_biloes='ner')
 print(corpus)
