@@ -76,8 +76,10 @@ from flair.visual.training_curves import Plotter
 task_name, path = args.task
 if task_name == 'conll03':
     task = NLPTask.CONLL_03
+    embeddings_in_memory = True
 elif task_name == 'ontoner':
     task = NLPTask.ONTONER
+    embeddings_in_memory = False
 else:
     raise NotImplementedError('{} is not implemented yet'.format(task_name))
 print('Task {}'.format(task.value))
@@ -155,7 +157,7 @@ from flair.trainers import ModelTrainer
 trainer: ModelTrainer = ModelTrainer(tagger, corpus, optimizer)
 
 trainer.train(args.working_dir, EvaluationMetric.MICRO_F1_SCORE, learning_rate=args.init_lr, mini_batch_size=32,
-              max_epochs=args.num_epochs, anneal_factor=anneal_factor)
+              max_epochs=args.num_epochs, anneal_factor=anneal_factor, embeddings_in_memory=embeddings_in_memory)
 
 plotter = Plotter()
 plotter.plot_training_curves('{}/loss.tsv'.format(args.working_dir))
