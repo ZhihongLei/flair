@@ -102,13 +102,9 @@ elif args.optimizer == 'adam':
 else:
     raise ValueError('Cannot recognize optimizer {}'.format(args.optimizer))
 
-print('Using word embeddings: {}'.format(str(embedding_types)))
 print('Using additional tag embeddings: {}'.format(str(additional_tag_embeddings)))
-print('Re-learning embeddings: {}'.format(args.relearn_embeddings))
 print('Using {}'.format(args.optimizer))
 print('Initial learning rate: {}'.format(args.init_lr))
-print('{} hidden layers of size {}'.format(args.num_hidden_layers, args.hidden_size))
-print('Dropout rate: {}'.format(args.dropout_rate))
 # initialize sequence tagger
 from flair.models import SequenceTagger
 
