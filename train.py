@@ -115,8 +115,12 @@ tagger: SequenceTagger = SequenceTagger.load_from_file(args.init_model)
 print('Previous tag dict: ' + str(tagger.tag_dictionary.idx2item))
 tagger.reset_tag_dict(tag_type, tag_dictionary)
 print('New tag dict: ' + str(tagger.tag_dictionary.idx2item))
-tagger.set_bypass(args.bypass_weight)
-tagger.set_direct_projection(args.direct_projection_weight)
+
+assert args.direct_projection_weight > 0 or args.bypass_weight > 0
+if args.bypass_weight > 0:
+    tagger.set_bypass(args.bypass_weight)
+if args.direct_projection_weight > 0:
+    tagger.set_direct_projection(args.direct_projection_weight)
 
 
 
