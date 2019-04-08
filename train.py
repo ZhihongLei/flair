@@ -63,8 +63,6 @@ except:
 
 from flair.data_fetcher import NLPTaskDataFetcher, NLPTask
 from flair.data import TaggedCorpus
-from flair.embeddings import TokenEmbeddings, WordEmbeddings, StackedEmbeddings, CharacterEmbeddings, \
-                            FlairEmbeddings, PooledFlairEmbeddings, NonStaticWordEmbeddings
 from flair.training_utils import EvaluationMetric
 from flair.visual.training_curves import Plotter
 
@@ -81,29 +79,9 @@ else:
 print('Task {}'.format(task.value))
 corpus: TaggedCorpus = NLPTaskDataFetcher.load_corpus(task, path)
 print(corpus)
+
 tag_type = args.tag_type
-
-# initialize embeddings
-embedding_types: List[TokenEmbeddings] = [WordEmbeddings(type) if type!='task-trained' \
-                                            else NonStaticWordEmbeddings(100, corpus.make_vocab_dictionary(min_freq=2)) \
-                                          for type in args.word_embeddings]
-if args.char_embeddings:
-     embedding_types.append(CharacterEmbeddings())
-if args.flair_embeddings:
-    embedding_types.extend([FlairEmbeddings(type) for type in args.flair_embeddings])
-if args.pooled_flair_embeddings:
-    embedding_types.extend([PooledFlairEmbeddings(type, pooling) for type, pooling in args.pooled_flair_embeddings])
-
-if len(embedding_types) == 0:
-    raise ValueError('Must specify at least one embedding type!')
-
-embeddings: StackedEmbeddings = StackedEmbeddings(embeddings=embedding_types)
-
-
-
 tag_dictionary = corpus.make_tag_dictionary(tag_type=tag_type)
-#print(tag_dictionary.idx2item)
-
 
 additional_tag_dictionaries = []
 additional_tag_embeddings = []
