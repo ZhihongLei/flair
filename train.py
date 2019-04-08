@@ -140,10 +140,9 @@ print('Dropout rate: {}'.format(args.dropout_rate))
 # initialize sequence tagger
 from flair.models import SequenceTagger
 
-if Path(args.working_dir).is_dir()() and Path(args.working_dir/'best-model.pt').is_file():
+if Path(args.working_dir).is_dir() and Path(args.working_dir/'best-model.pt').is_file():
     import distutils 
-    distutils.dir_util.copy_tree(Path(args.working_dir), Path(args.working_dir + '-old'))
-    Path(args.working_dir)
+    distutils.dir_util.copy_tree(str(Path(args.working_dir)), str(Path(args.working_dir + '-old')))
     print('Loading initial model from ' + Path(args.working_dir/'best-model.pt'))
     tagger: SequenceTagger = SequenceTagger.load_from_file(Path(args.working_dir/'best-model.pt'))
 else:
