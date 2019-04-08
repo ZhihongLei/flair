@@ -5,7 +5,6 @@ import gpustat
 import torch
 from torch.optim.adam import Adam
 from torch.optim.sgd import SGD
-from pathlib import Path
 
 
 def def_pooled_embeddings(s):
