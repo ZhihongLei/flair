@@ -146,7 +146,7 @@ if os.path.isdir(args.working_dir) and os.path.isfile(os.path.join(args.working_
     #import distutils 
     #distutils.dir_util.copy_tree(str(Path(args.working_dir)), str(Path(args.working_dir + '-old')))
     print('Loading initial model from ' + os.path.join(args.working_dir, 'best-model.pt'))
-    tagger: SequenceTagger = SequenceTagger.load_from_file(Path(args.working_dir/'best-model.pt'))
+    tagger: SequenceTagger = SequenceTagger.load_from_file(os.path.join(args.working_dir, 'best-model.pt'))
 else:
     print('Initialize model')
 
