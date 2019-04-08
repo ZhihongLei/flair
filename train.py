@@ -5,8 +5,8 @@ import gpustat
 import torch
 from torch.optim.adam import Adam
 from torch.optim.sgd import SGD
+from pathlib import Path
 
-# add one line
 
 def def_pooled_embeddings(s):
     try:
@@ -51,6 +51,7 @@ parser.add_argument('--optimizer', default='sgd', choices=['sgd', 'adam'], help=
 parser.add_argument('--init-lr', type=float, default=0.1, help='Initial learning rate')
 parser.add_argument('--num-epochs', type=int, default=20, help='Number of epochs')
 parser.add_argument('--working-dir', default='.', help='Working directory where outputs are stored')
+
 
 args = parser.parse_args()
 
@@ -139,8 +140,16 @@ print('Dropout rate: {}'.format(args.dropout_rate))
 # initialize sequence tagger
 from flair.models import SequenceTagger
 
+if Path(args.working_dir).is_dir()() and Path(args.working_dir/'best-model.pt').is_file():
+    import distutils 
+    distutils.dir_util.copy_tree(Path(args.working_dir), Path(args.working_dir + '-old'))
+    Path(args.working_dir)
+    print('Loading initial model from ' + Path(args.working_dir/'best-model.pt'))
+    tagger: SequenceTagger = SequenceTagger.load_from_file(Path(args.working_dir/'best-model.pt'))
+else:
+    print('Initialize model')
 
-tagger: SequenceTagger = SequenceTagger(hidden_size=args.hidden_size,
+    tagger: SequenceTagger = SequenceTagger(hidden_size=args.hidden_size,
                                         embeddings=embeddings,
                                         tag_dictionary=tag_dictionary,
                                         additional_tag_embeddings=additional_tag_embeddings,
