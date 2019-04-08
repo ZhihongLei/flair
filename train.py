@@ -35,17 +35,12 @@ def def_task(s):
 
 
 parser = argparse.ArgumentParser(description='Train Flair NER model')
+parser.add_argument('--init-model', help='Initial OntoNotes model')
+parser.add_argument('--direct-projection-weight', type=float, default=1.0, help='Weight of direct projection pass')
+parser.add_argument('--bypass-weight', type=float, default=0., help='Weight of bypass')
 parser.add_argument('--task', type=def_task, required=True, help='Task and data path')
 parser.add_argument('--tag-type', required=True, help='Tag type to train')
-parser.add_argument('--word-embeddings', nargs='*', help='Type(s) of word embeddings')
-parser.add_argument('--char-embeddings', action='store_true', help='Character embeddings trained on task corpus, Lample 2016')
-parser.add_argument('--flair-embeddings', nargs='*', help='Type(s) of Flair embeddings')
-parser.add_argument('--relearn-embeddings', action='store_true', help='Re-learn embeddings, might be useful when using pretrained embeddings')
-parser.add_argument('--pooled-flair-embeddings', nargs='*', type=def_pooled_embeddings, help="Type(s) of pooled Flair embeddings")
 parser.add_argument('--additional-embeddings', nargs='*', type=def_additional_embeddings, help="Type(s) of additional input tag embeddings")
-parser.add_argument('--hidden-size', type=int, default=256, help='Hidden layer size')
-parser.add_argument('--num-hidden-layers', type=int, default=1, help='Number of hidden layers')
-parser.add_argument('--dropout-rate', type=float, default=0.0, help='Dropout rate')
 parser.add_argument('--optimizer', default='sgd', choices=['sgd', 'adam'], help='Type of optimizer')
 parser.add_argument('--init-lr', type=float, default=0.1, help='Initial learning rate')
 parser.add_argument('--num-epochs', type=int, default=20, help='Number of epochs')
@@ -107,7 +102,7 @@ embeddings: StackedEmbeddings = StackedEmbeddings(embeddings=embedding_types)
 
 
 tag_dictionary = corpus.make_tag_dictionary(tag_type=tag_type)
-print(tag_dictionary.idx2item)
+#print(tag_dictionary.idx2item)
 
 
 additional_tag_dictionaries = []
@@ -140,25 +135,15 @@ print('Dropout rate: {}'.format(args.dropout_rate))
 from flair.models import SequenceTagger
 
 
+print('Loading initial model from ' + args.init_model)
+tagger: SequenceTagger = SequenceTagger.load_from_file(args.init_model)
 
-if os.path.isdir(args.working_dir) and os.path.isfile(os.path.join(args.working_dir, 'best-model.pt')):
-    #import distutils 
-    #distutils.dir_util.copy_tree(str(Path(args.working_dir)), str(Path(args.working_dir + '-old')))
-    print('Loading initial model from ' + os.path.join(args.working_dir, 'best-model.pt'))
-    tagger: SequenceTagger = SequenceTagger.load_from_file(os.path.join(args.working_dir, 'best-model.pt'))
-else:
-    print('Initialize model')
+print('Previous tag dict: ' + tagger.tag_dictionary.idx2item)
+tagger.reset_tag_dict(tag_type, tag_dictionary)
+print('New tag dict: ' + tagger.tag_dictionary.idx2item)
+tagger.set_bypass(args.by_pass, args.bypass_weight)
+tagger.set_direct_projection(args.direct_projection_weight)
 
-    tagger: SequenceTagger = SequenceTagger(hidden_size=args.hidden_size,
-                                        embeddings=embeddings,
-                                        tag_dictionary=tag_dictionary,
-                                        additional_tag_embeddings=additional_tag_embeddings,
-                                        additional_tag_dictionaries=additional_tag_dictionaries,
-                                        tag_type=tag_type,
-                                        use_crf=True,
-                                        rnn_layers=args.num_hidden_layers,
-                                        rnn_dropout=args.dropout_rate,
-                                        relearn_embeddings=args.relearn_embeddings)
 
 
 #print(tagger.parameters)

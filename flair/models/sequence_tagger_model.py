@@ -164,6 +164,11 @@ class SequenceTagger(flair.nn.Model):
                 torch.randn(self.tagset_size, self.tagset_size))
             self.transitions.detach()[self.tag_dictionary.get_idx_for_item(START_TAG), :] = -10000
             self.transitions.detach()[:, self.tag_dictionary.get_idx_for_item(STOP_TAG)] = -10000
+        
+        self.bypass_weight = None
+        self.direct_projection_weight = None
+        self.bypass = None 
+        self.direct_projection = None
 
         self.to(flair.device)
         
@@ -199,6 +204,12 @@ class SequenceTagger(flair.nn.Model):
             'use_locked_dropout': self.use_locked_dropout,
             'relearn_embeddings': self.relearn_embeddings
         }
+        if self.bypass_weight is not None:
+            model_state['bypass_weight'] = self.bypass_weight
+            model_state['bypass'] = self.bypass
+        if self.direct_projection_weight is not None:
+            model_state['direct_projection_weight'] = self.direct_projection_weight
+            model_state['direct_projection'] = self.direct_projection
 
         self.save_torch_model(model_state, str(model_file), self.pickle_module)
 
@@ -223,6 +234,12 @@ class SequenceTagger(flair.nn.Model):
             'epoch': epoch,
             'loss': loss
         }
+        if self.bypass_weight is not None:
+            model_state['bypass_weight'] = self.bypass_weight
+            model_state['bypass'] = self.bypass
+        if self.direct_projection_weight is not None:
+            model_state['direct_projection_weight'] = self.direct_projection_weight
+            model_state['direct_projection'] = self.direct_projection
 
         self.save_torch_model(model_state, str(model_file), self.pickle_module)
 
@@ -249,7 +266,12 @@ class SequenceTagger(flair.nn.Model):
             locked_dropout=use_locked_dropout,
             relearn_embeddings=state['relearn_embeddings']
             )
+        
         model.load_state_dict(state['state_dict'])
+        if 'bypass' in state:
+            model.set_bypass(state['bypass'], state['bypass_weight'])
+        if 'direct_projection' in state:
+            model.set_bypass(state['direct_projection'], state['direct_projection_weight'])
         model.eval()
         model.to(flair.device)
 
@@ -282,6 +304,37 @@ class SequenceTagger(flair.nn.Model):
             f = flair.file_utils.load_big_file(str(model_file))
             state = torch.load(f, map_location=flair.device)
             return state
+
+    
+    def reset_tag_dict(self, tag_type, tag_dictionary):
+        self.tag_dictionary: Dictionary = tag_dictionary
+        self.tag_type: str = tag_type
+        self.tagset_size: int = len(tag_dictionary)
+        if self.use_crf:
+            self.transitions = torch.nn.Parameter(
+                torch.randn(self.tagset_size, self.tagset_size))
+            self.transitions.detach()[self.tag_dictionary.get_idx_for_item(START_TAG), :] = -10000
+            self.transitions.detach()[:, self.tag_dictionary.get_idx_for_item(STOP_TAG)] = -10000
+    
+
+    def set_bypass(self, weight, bypass=None):
+        if bypass is not None:
+            self.bypass = bypass
+        else:
+            self.bypass = torch.nn.Linear(self.linear.out_features, self.tagset_size)
+        self.bypass_weight = weight
+        self.bypass.to(flair.device)
+        
+    def set_direct_projection(self, weight, direct_projection=None):
+        if direct_projection is not None:
+            self.direct_projection = direct_projection
+        else:
+            if self.use_rnn:
+                self.direct_projection = torch.nn.Linear(self.hidden_size * 2, self.tagset_size)
+            else:
+                self.direct_projection = torch.nn.Linear(self.embedding_length, self.tagset_size)
+        self.direct_projection_weight = weight
+        self.direct_projection.to(flair.device)
 
     def forward_loss(self, sentences: Union[List[Sentence], Sentence], sort=True) -> torch.tensor:
         features, lengths, tags = self.forward(sentences, sort=sort)
@@ -399,7 +452,14 @@ class SequenceTagger(flair.nn.Model):
             if self.use_locked_dropout > 0.0:
                 sentence_tensor = self.locked_dropout(sentence_tensor)
 
+        
+        
         features = self.linear(sentence_tensor)
+        if self.direct_projection is not None:
+            features = self.direct_projection(features) * self.direct_projection_weight
+        if self.bypass is not None:
+            bypass_features = self.bypass(sentence_tensor) * self.bypass_weight
+            features = features + bypass_features
 
         return features.transpose_(0, 1), lengths, tag_list
 
