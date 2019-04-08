@@ -321,7 +321,11 @@ class SequenceTagger(flair.nn.Model):
         if bypass is not None:
             self.bypass = bypass
         else:
-            self.bypass = torch.nn.Linear(self.linear.out_features, self.tagset_size)
+            if self.use_rnn:
+                self.bypass = torch.nn.Linear(self.hidden_size * 2, self.tagset_size)
+            else:
+                self.bypass = torch.nn.Linear(self.embedding_length, self.tagset_size)
+                
         self.bypass_weight = weight
         self.bypass.to(flair.device)
         
@@ -329,10 +333,7 @@ class SequenceTagger(flair.nn.Model):
         if direct_projection is not None:
             self.direct_projection = direct_projection
         else:
-            if self.use_rnn:
-                self.direct_projection = torch.nn.Linear(self.hidden_size * 2, self.tagset_size)
-            else:
-                self.direct_projection = torch.nn.Linear(self.embedding_length, self.tagset_size)
+            self.direct_projection = torch.nn.Linear(self.linear.out_features, self.tagset_size)
         self.direct_projection_weight = weight
         self.direct_projection.to(flair.device)
 
