@@ -126,7 +126,7 @@ from flair.trainers import ModelTrainer
 trainer: ModelTrainer = ModelTrainer(tagger, corpus, optimizer)
 
 trainer.train(args.working_dir, EvaluationMetric.MICRO_F1_SCORE, learning_rate=args.init_lr, mini_batch_size=32,
-              max_epochs=args.num_epochs, anneal_factor=anneal_factor, embeddings_in_memory=embeddings_in_memory)
+              max_epochs=args.num_epochs, anneal_factor=anneal_factor, embeddings_in_memory=False)
 
 plotter = Plotter()
 plotter.plot_training_curves('{}/loss.tsv'.format(args.working_dir))

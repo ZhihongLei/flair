@@ -455,12 +455,15 @@ class SequenceTagger(flair.nn.Model):
 
         
         
-        features = self.linear(sentence_tensor)
+        features = None
         if self.direct_projection is not None:
+            features = self.linear(sentence_tensor)
             features = self.direct_projection(features) * self.direct_projection_weight
         if self.bypass is not None:
             bypass_features = self.bypass(sentence_tensor) * self.bypass_weight
-            features = features + bypass_features
+            if features is not None:
+                features = features + bypass_features
+            else: features = bypass_features
 
         return features.transpose_(0, 1), lengths, tag_list
 
