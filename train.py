@@ -36,7 +36,7 @@ def def_task(s):
 
 parser = argparse.ArgumentParser(description='Train Flair NER model')
 parser.add_argument('--init-model', help='Initial OntoNotes model')
-parser.add_argument('--direct-projection-weight', type=float, default=1.0, help='Weight of direct projection pass')
+parser.add_argument('--direct-projection-weight', type=float, default=0., help='Weight of direct projection pass')
 parser.add_argument('--bypass-weight', type=float, default=0., help='Weight of bypass')
 parser.add_argument('--task', type=def_task, required=True, help='Task and data path')
 parser.add_argument('--tag-type', required=True, help='Tag type to train')
