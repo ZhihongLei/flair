@@ -315,6 +315,7 @@ class SequenceTagger(flair.nn.Model):
                 torch.randn(self.tagset_size, self.tagset_size))
             self.transitions.detach()[self.tag_dictionary.get_idx_for_item(START_TAG), :] = -10000
             self.transitions.detach()[:, self.tag_dictionary.get_idx_for_item(STOP_TAG)] = -10000
+            self.transitions.to(flair.device)
     
 
     def set_bypass(self, weight, bypass=None):
