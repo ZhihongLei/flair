@@ -244,7 +244,7 @@ class SequenceTagger(flair.nn.Model):
         self.save_torch_model(model_state, str(model_file), self.pickle_module)
 
     @classmethod
-    def load_from_file(cls, model_file: Union[str, Path]):
+    def load_from_file(cls, model_file: Union[str, Path], eval=True):
         state = SequenceTagger._load_state(model_file)
 
         use_dropout = 0.0 if not 'use_dropout' in state.keys() else state['use_dropout']
@@ -272,7 +272,9 @@ class SequenceTagger(flair.nn.Model):
             model.set_bypass(state['bypass'], state['bypass_weight'])
         if 'direct_projection' in state:
             model.set_bypass(state['direct_projection'], state['direct_projection_weight'])
-        model.eval()
+        if eval:
+            model.eval()
+        else: model.train()
         model.to(flair.device)
 
         return model

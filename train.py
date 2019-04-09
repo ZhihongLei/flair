@@ -110,7 +110,7 @@ from flair.models import SequenceTagger
 
 
 print('Loading initial model from ' + args.init_model)
-tagger: SequenceTagger = SequenceTagger.load_from_file(args.init_model)
+tagger: SequenceTagger = SequenceTagger.load_from_file(args.init_model, eval=False)
 
 print('Previous tag dict: ' + str(tagger.tag_dictionary.idx2item))
 tagger.reset_tag_dict(tag_type, tag_dictionary)
