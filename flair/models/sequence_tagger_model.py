@@ -83,6 +83,7 @@ class SequenceTagger(flair.nn.Model):
                  locked_dropout: float = 0.5,
                  pickle_module: str = 'pickle',
                  relearn_embeddings: bool =True,
+                 linear_features = None
                  ):
         
 
@@ -103,6 +104,7 @@ class SequenceTagger(flair.nn.Model):
         self.tag_dictionary: Dictionary = tag_dictionary
         self.tag_type: str = tag_type
         self.tagset_size: int = len(tag_dictionary)
+        self.linear_features = linear_features if linear_features is not None else self.tagset_size
         
         self.additional_tag_embeddings = additional_tag_embeddings
         self.additional_tag_dictionaries = additional_tag_dictionaries
@@ -155,9 +157,9 @@ class SequenceTagger(flair.nn.Model):
 
         # final linear map to tag space
         if self.use_rnn:
-            self.linear = torch.nn.Linear(hidden_size * 2, len(tag_dictionary))
+            self.linear = torch.nn.Linear(hidden_size * 2, self.linear_features)
         else:
-            self.linear = torch.nn.Linear(self.embedding_length, len(tag_dictionary))
+            self.linear = torch.nn.Linear(self.embedding_length, self.linear_features)
 
         if self.use_crf:
             self.transitions = torch.nn.Parameter(
@@ -202,7 +204,8 @@ class SequenceTagger(flair.nn.Model):
             'rnn_layers': self.rnn_layers,
             'use_word_dropout': self.use_word_dropout,
             'use_locked_dropout': self.use_locked_dropout,
-            'relearn_embeddings': self.relearn_embeddings
+            'relearn_embeddings': self.relearn_embeddings,
+            'linear_features': self.linear_features
         }
         if self.bypass_weight is not None:
             model_state['bypass_weight'] = self.bypass_weight
@@ -227,6 +230,7 @@ class SequenceTagger(flair.nn.Model):
             'use_word_dropout': self.use_word_dropout,
             'use_locked_dropout': self.use_locked_dropout,
             'relearn_embeddings': self.relearn_embeddings,
+            'linear_features': self.linear_features,
             'optimizer_state_dict': optimizer_state,
             'scheduler_state_dict': scheduler_state,
             'epoch': epoch,
@@ -246,6 +250,7 @@ class SequenceTagger(flair.nn.Model):
         use_dropout = 0.0 if not 'use_dropout' in state.keys() else state['use_dropout']
         use_word_dropout = 0.0 if not 'use_word_dropout' in state.keys() else state['use_word_dropout']
         use_locked_dropout = 0.0 if not 'use_locked_dropout' in state.keys() else state['use_locked_dropout']
+        linear_features = None if not 'linear_features' in state else state['linear_features']
 
         model = SequenceTagger(
             hidden_size=state['hidden_size'],
@@ -260,14 +265,17 @@ class SequenceTagger(flair.nn.Model):
             dropout=use_dropout,
             word_dropout=use_word_dropout,
             locked_dropout=use_locked_dropout,
-            relearn_embeddings=state['relearn_embeddings']
+            relearn_embeddings=state['relearn_embeddings'],
+            linear_features=linear_features,
             )
         
-        model.load_state_dict(state['state_dict'])
         if 'bypass_weight' in state:
-            self.bypass_weight = state['bypass_weight']
+            self.set_bypass(state['bypass_weight'])
         if 'direct_projection_weight' in state:
-            self.direct_projection_weight = state['direct_projection_weight']
+            self.set_direct_projection(state['bypass_weight'])
+            
+        model.load_state_dict(state['state_dict'])
+        
         model.train(not eval)
         model.to(flair.device)
 
