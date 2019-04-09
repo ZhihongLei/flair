@@ -206,10 +206,8 @@ class SequenceTagger(flair.nn.Model):
         }
         if self.bypass_weight is not None:
             model_state['bypass_weight'] = self.bypass_weight
-            model_state['bypass'] = self.bypass
         if self.direct_projection_weight is not None:
             model_state['direct_projection_weight'] = self.direct_projection_weight
-            model_state['direct_projection'] = self.direct_projection
 
         self.save_torch_model(model_state, str(model_file), self.pickle_module)
 
@@ -236,10 +234,8 @@ class SequenceTagger(flair.nn.Model):
         }
         if self.bypass_weight is not None:
             model_state['bypass_weight'] = self.bypass_weight
-            model_state['bypass'] = self.bypass
         if self.direct_projection_weight is not None:
             model_state['direct_projection_weight'] = self.direct_projection_weight
-            model_state['direct_projection'] = self.direct_projection
 
         self.save_torch_model(model_state, str(model_file), self.pickle_module)
 
@@ -268,10 +264,10 @@ class SequenceTagger(flair.nn.Model):
             )
         
         model.load_state_dict(state['state_dict'])
-        if 'bypass' in state:
-            model.set_bypass(state['bypass'], state['bypass_weight'])
-        if 'direct_projection' in state:
-            model.set_bypass(state['direct_projection'], state['direct_projection_weight'])
+        if 'bypass_weight' in state:
+            self.bypass_weight = state['bypass_weight']
+        if 'direct_projection_weight' in state:
+            self.direct_projection_weight = state['direct_projection_weight']
         model.train(not eval)
         model.to(flair.device)
 
@@ -308,7 +304,6 @@ class SequenceTagger(flair.nn.Model):
 
     def freeze_model(self, freeze=True):
         for p in self.parameters():
-            print(p.name)
             p.requires_grad = not freeze
 
     
@@ -325,6 +320,7 @@ class SequenceTagger(flair.nn.Model):
     
 
     def set_bypass(self, weight, bypass=None):
+        self.bypass_weight = weight
         if bypass is not None:
             self.bypass = bypass
         else:
@@ -333,15 +329,16 @@ class SequenceTagger(flair.nn.Model):
             else:
                 self.bypass = torch.nn.Linear(self.embedding_length, self.tagset_size)
                 
-        self.bypass_weight = weight
+        
         self.bypass.to(flair.device)
         
     def set_direct_projection(self, weight, direct_projection=None):
+        self.direct_projection_weight = weight
         if direct_projection is not None:
             self.direct_projection = direct_projection
         else:
             self.direct_projection = torch.nn.Linear(self.linear.out_features, self.tagset_size)
-        self.direct_projection_weight = weight
+        
         self.direct_projection.to(flair.device)
 
     def forward_loss(self, sentences: Union[List[Sentence], Sentence], sort=True) -> torch.tensor:

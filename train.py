@@ -100,27 +100,27 @@ print('Initial learning rate: {}'.format(args.init_lr))
 from flair.models import SequenceTagger
 
 
-print('Loading initial model from ' + args.init_model)
-tagger: SequenceTagger = SequenceTagger.load_from_file(args.init_model, eval=False)
+if os.path.isdir(args.working_dir) and os.path.isfile(os.path.join(args.working_dir, 'best-model.pt')):
+    print('Model exists in the working directory, loading ...')
+    tagger: SequenceTagger = SequenceTagger.load_from_file(os.path.join(args.working_dir, 'best-model.pt'), eval=False)
+    print('Tag dict: ' + str(tagger.tag_dictionary.idx2item))
+    tagger.freeze_model(args.freeze)
+else:
+    print('Loading initial model from ' + args.init_model)
+    tagger: SequenceTagger = SequenceTagger.load_from_file(args.init_model, eval=False)
+    print('Previous tag dict: ' + str(tagger.tag_dictionary.idx2item))
+    tagger.reset_tag_dict(tag_type, tag_dictionary)
+    print('New tag dict: ' + str(tagger.tag_dictionary.idx2item))
 
-print('Previous tag dict: ' + str(tagger.tag_dictionary.idx2item))
-tagger.reset_tag_dict(tag_type, tag_dictionary)
-print('New tag dict: ' + str(tagger.tag_dictionary.idx2item))
+    tagger.freeze_model(args.freeze)
+    
+    assert args.direct_projection_weight > 0 or args.bypass_weight > 0
+    if args.bypass_weight > 0:
+        tagger.set_bypass(args.bypass_weight)
+    if args.direct_projection_weight > 0:
+        tagger.set_direct_projection(args.direct_projection_weight)
 
 
-tagger.freeze_model(args.freeze)
-
-assert args.direct_projection_weight > 0 or args.bypass_weight > 0
-if args.bypass_weight > 0:
-    tagger.set_bypass(args.bypass_weight)
-if args.direct_projection_weight > 0:
-    tagger.set_direct_projection(args.direct_projection_weight)
-
-for p in tagger.parameters():
-    print(p.name, p.requires_grad)
-
-#print(tagger.parameters)
-#print(tagger.state_dict().keys())
 from flair.trainers import ModelTrainer
 trainer: ModelTrainer = ModelTrainer(tagger, corpus, optimizer)
 
