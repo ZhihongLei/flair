@@ -227,7 +227,7 @@ class SequenceTagger(flair.nn.Model):
         self.save_torch_model(model_state, str(model_file), self.pickle_module)
 
     @classmethod
-    def load_from_file(cls, model_file: Union[str, Path]):
+    def load_from_file(cls, model_file: Union[str, Path], eval=True):
         state = SequenceTagger._load_state(model_file)
 
         use_dropout = 0.0 if not 'use_dropout' in state.keys() else state['use_dropout']
@@ -250,7 +250,7 @@ class SequenceTagger(flair.nn.Model):
             relearn_embeddings=state['relearn_embeddings']
             )
         model.load_state_dict(state['state_dict'])
-        model.eval()
+        model.train(not eval)
         model.to(flair.device)
 
         return model
