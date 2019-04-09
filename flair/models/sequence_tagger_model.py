@@ -305,6 +305,12 @@ class SequenceTagger(flair.nn.Model):
             state = torch.load(f, map_location=flair.device)
             return state
 
+
+    def freeze_model(self, freeze=True):
+        for p in self.parameters():
+            print(p)
+            p.requires_grad = not freeze
+
     
     def reset_tag_dict(self, tag_type, tag_dictionary):
         self.tag_dictionary: Dictionary = tag_dictionary

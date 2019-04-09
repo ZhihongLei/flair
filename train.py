@@ -7,16 +7,6 @@ from torch.optim.adam import Adam
 from torch.optim.sgd import SGD
 
 
-def def_pooled_embeddings(s):
-    try:
-        embedding, pooling = s.split(':')
-    except:
-        raise argparse.ArgumentTypeError('Pooled Embeddings should be in format: EmbeddingType:PoolingType.')
-    if pooling == 'max' or pooling == 'min' or pooling == 'mean' or pooling == 'fade':
-        return embedding, pooling
-    raise argparse.ArgumentTypeError('PoolingType must be chosen from: max, min, mean or fade.')
-
-
 def def_additional_embeddings(s):
     try:
         embedding, size = s.split(':')
@@ -35,11 +25,12 @@ def def_task(s):
 
 
 parser = argparse.ArgumentParser(description='Train Flair NER model')
+parser.add_argument('--task', type=def_task, required=True, help='Task and data path')
+parser.add_argument('--tag-type', required=True, help='Tag type to train')
 parser.add_argument('--init-model', help='Initial OntoNotes model')
 parser.add_argument('--direct-projection-weight', type=float, default=0., help='Weight of direct projection pass')
 parser.add_argument('--bypass-weight', type=float, default=0., help='Weight of bypass')
-parser.add_argument('--task', type=def_task, required=True, help='Task and data path')
-parser.add_argument('--tag-type', required=True, help='Tag type to train')
+parser.add_argument('--freeze', action='store_true', help='Freeze pretrained model')
 parser.add_argument('--additional-embeddings', nargs='*', type=def_additional_embeddings, help="Type(s) of additional input tag embeddings")
 parser.add_argument('--optimizer', default='sgd', choices=['sgd', 'adam'], help='Type of optimizer')
 parser.add_argument('--init-lr', type=float, default=0.1, help='Initial learning rate')
@@ -116,13 +107,17 @@ print('Previous tag dict: ' + str(tagger.tag_dictionary.idx2item))
 tagger.reset_tag_dict(tag_type, tag_dictionary)
 print('New tag dict: ' + str(tagger.tag_dictionary.idx2item))
 
+
+tagger.freeze_model(args.freeze)
+
 assert args.direct_projection_weight > 0 or args.bypass_weight > 0
 if args.bypass_weight > 0:
     tagger.set_bypass(args.bypass_weight)
 if args.direct_projection_weight > 0:
     tagger.set_direct_projection(args.direct_projection_weight)
 
-
+for p in tagger.parameters():
+    print(p, p.requires_grad)
 
 #print(tagger.parameters)
 #print(tagger.state_dict().keys())
