@@ -272,9 +272,7 @@ class SequenceTagger(flair.nn.Model):
             model.set_bypass(state['bypass'], state['bypass_weight'])
         if 'direct_projection' in state:
             model.set_bypass(state['direct_projection'], state['direct_projection_weight'])
-        if eval:
-            model.eval()
-        else: model.train()
+        model.train(not eval)
         model.to(flair.device)
 
         return model
