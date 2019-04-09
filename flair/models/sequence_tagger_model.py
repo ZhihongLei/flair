@@ -308,7 +308,7 @@ class SequenceTagger(flair.nn.Model):
 
     def freeze_model(self, freeze=True):
         for p in self.parameters():
-            print(p)
+            print(p.name)
             p.requires_grad = not freeze
 
     

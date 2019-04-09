@@ -117,7 +117,7 @@ if args.direct_projection_weight > 0:
     tagger.set_direct_projection(args.direct_projection_weight)
 
 for p in tagger.parameters():
-    print(p, p.requires_grad)
+    print(p.name, p.requires_grad)
 
 #print(tagger.parameters)
 #print(tagger.state_dict().keys())
