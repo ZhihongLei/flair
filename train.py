@@ -114,10 +114,9 @@ else:
 
     tagger.freeze_model(args.freeze)
     
-    assert args.direct_projection_weight > 0 or args.bypass_weight > 0
-    if args.bypass_weight > 0:
+    if args.bypass_weight > 0 and tagger.bypass is None:
         tagger.set_bypass(args.bypass_weight)
-    if args.direct_projection_weight > 0:
+    if args.direct_projection_weight > 0 and tagger.direct_projection is None:
         tagger.set_direct_projection(args.direct_projection_weight)
 
 
