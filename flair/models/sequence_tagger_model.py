@@ -272,7 +272,7 @@ class SequenceTagger(flair.nn.Model):
         if 'bypass_weight' in state:
             model.set_bypass(state['bypass_weight'])
         if 'direct_projection_weight' in state:
-            model.set_direct_projection(state['bypass_weight'])
+            model.set_direct_projection(state['direct_projection_weight'])
             
         model.load_state_dict(state['state_dict'])
         
