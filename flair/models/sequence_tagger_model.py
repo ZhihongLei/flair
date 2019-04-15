@@ -83,12 +83,29 @@ class SequenceTagger(flair.nn.Model):
                  locked_dropout: float = 0.5,
                  pickle_module: str = 'pickle',
                  relearn_embeddings: bool =True,
+                 additional_model_paths: List[str] = [],
+                 additional_model_from_types: List[str] = [],
+                 additional_model_to_types: List[str] = []
                  ):
         
 
         
         super(SequenceTagger, self).__init__()
         
+
+        
+        
+        self.additional_model_paths = additional_model_paths
+        self.additional_model_from_types = additional_model_from_types
+        self.additional_model_to_types = additional_model_to_types
+        
+        self.additional_models = []
+        for from_type, to_type, path in zip(additional_model_from_types, additional_model_to_types, additional_model_paths):
+            model = SequenceTagger.load_from_file(path)
+            model.freeze_model()
+            model.to(flair.device)
+            self.additional_models.append(model)
+
 
         self.use_rnn = use_rnn
         self.hidden_size = hidden_size
@@ -112,6 +129,12 @@ class SequenceTagger(flair.nn.Model):
         for additional_tag_embedding in self.additional_tag_embeddings:
             self.embedding_length += additional_tag_embedding.embedding_length
             
+        self.real_embedding_length = self.embedding_length
+        for from_type, to_type, model in zip(self.additional_model_from_types, self.additional_model_to_types, self.additional_models):
+            if to_type == 'embeddings':
+                self.real_embedding_length += model.get_output_size(from_type)
+            
+            
         # initialize the network architecture
         self.nlayers: int = rnn_layers
         self.hidden_word = None
@@ -132,7 +155,7 @@ class SequenceTagger(flair.nn.Model):
         if locked_dropout > 0.0:
             self.locked_dropout = flair.nn.LockedDropout(locked_dropout)
 
-        rnn_input_dim: int = self.embedding_length
+        rnn_input_dim: int = self.real_embedding_length
 
         self.relearn_embeddings: bool = relearn_embeddings
 
@@ -154,10 +177,16 @@ class SequenceTagger(flair.nn.Model):
                                                             bidirectional=True)
 
         # final linear map to tag space
+        
+        self.real_hidden_size = hidden_size * 2
+        for from_type, to_type, model in zip(self.additional_model_from_types, self.additional_model_to_types, self.additional_models):
+            if to_type == 'hidden':
+                self.real_hidden_size += model.get_output_size(from_type)
+            
         if self.use_rnn:
-            self.linear = torch.nn.Linear(hidden_size * 2, len(tag_dictionary))
+            self.linear = torch.nn.Linear(self.real_hidden_size, len(tag_dictionary))
         else:
-            self.linear = torch.nn.Linear(self.embedding_length, len(tag_dictionary))
+            self.linear = torch.nn.Linear(self.real_embedding_length, len(tag_dictionary))
 
         if self.use_crf:
             self.transitions = torch.nn.Parameter(
@@ -167,6 +196,7 @@ class SequenceTagger(flair.nn.Model):
 
         self.to(flair.device)
         
+
 
     @staticmethod
     def save_torch_model(model_state: dict, model_file: str, pickle_module: str = 'pickle', pickle_protocol: int = 4):
@@ -197,7 +227,10 @@ class SequenceTagger(flair.nn.Model):
             'rnn_layers': self.rnn_layers,
             'use_word_dropout': self.use_word_dropout,
             'use_locked_dropout': self.use_locked_dropout,
-            'relearn_embeddings': self.relearn_embeddings
+            'relearn_embeddings': self.relearn_embeddings,
+            'additional_model_paths': self.additional_model_paths, 
+            'additional_model_from_types': self.additional_model_from_types, 
+            'additional_model_to_types': self.additional_model_to_types
         }
 
         self.save_torch_model(model_state, str(model_file), self.pickle_module)
@@ -218,6 +251,9 @@ class SequenceTagger(flair.nn.Model):
             'use_word_dropout': self.use_word_dropout,
             'use_locked_dropout': self.use_locked_dropout,
             'relearn_embeddings': self.relearn_embeddings,
+            'additional_model_paths': self.additional_model_paths, 
+            'additional_model_from_types': self.additional_model_from_types, 
+            'additional_model_to_types': self.additional_model_to_types,
             'optimizer_state_dict': optimizer_state,
             'scheduler_state_dict': scheduler_state,
             'epoch': epoch,
@@ -247,7 +283,10 @@ class SequenceTagger(flair.nn.Model):
             dropout=use_dropout,
             word_dropout=use_word_dropout,
             locked_dropout=use_locked_dropout,
-            relearn_embeddings=state['relearn_embeddings']
+            relearn_embeddings=state['relearn_embeddings'],
+            additional_model_paths=state['additional_model_paths'] if 'additional_model_paths' in state else [],
+            additional_model_from_types=state['additional_model_from_types'] if 'additional_model_from_types' in state else [],
+            additional_model_to_types=state['additional_model_to_types'] if 'additional_model_to_types' in state else [],
             )
         model.load_state_dict(state['state_dict'])
         model.train(not eval)
@@ -334,7 +373,29 @@ class SequenceTagger(flair.nn.Model):
 
             return sentences
 
-    def forward(self, sentences: List[Sentence], sort=True):
+
+    def freeze_model(self, freeze=True):
+        for p in self.parameters():
+            p.requires_grad = not freeze
+
+
+    def get_output_size(self, layer):
+        if layer == 'embeddings':
+            return self.real_embedding_length
+        if layer == 'hidden':
+            return self.linear.in_features
+        if layer == 'logits':
+            return self.linear.out_features
+        raise ValueError('Layer must be chosen from embeddings, hidden and logits')
+
+
+    def get_layer_output(self, sentences: List[Sentence], layer, sort=True):
+        self.eval()
+        return self.forward(sentences, sort, layer)[0]
+
+
+
+    def forward(self, sentences: List[Sentence], sort=True, layer=None):
         self.zero_grad()
 
         self.embeddings.embed(sentences)
@@ -369,8 +430,16 @@ class SequenceTagger(flair.nn.Model):
             tag = torch.LongTensor(tag_idx).to(flair.device)
             tag_list.append(tag)
 
-        sentence_tensor = sentence_tensor.transpose_(0, 1)
+        
+        for from_type, to_type, model in zip(self.additional_model_from_types, self.additional_model_to_types, self.additional_models):
+            if to_type == 'embeddings':
+                additional_sentence_tensor = model.get_layer_output(sentences, from_type)
+                sentence_tensor = torch.cat([sentence_tensor, additional_sentence_tensor], 2)            
 
+        if layer == 'embeddings': return sentence_tensor, lengths, tag_list
+        
+        sentence_tensor = sentence_tensor.transpose_(0, 1)
+        
         # --------------------------------------------------------------------
         # FF PART
         # --------------------------------------------------------------------
@@ -399,9 +468,19 @@ class SequenceTagger(flair.nn.Model):
             if self.use_locked_dropout > 0.0:
                 sentence_tensor = self.locked_dropout(sentence_tensor)
 
-        features = self.linear(sentence_tensor)
+        for from_type, to_type, model in zip(self.additional_model_from_types, self.additional_model_to_types, self.additional_models):
+            if to_type == 'hidden':
+                additional_sentence_tensor = model.get_layer_output(sentences, from_type)
+                additional_sentence_tensor = additional_sentence_tensor.transpose_(0, 1)
+                sentence_tensor = torch.cat([sentence_tensor, additional_sentence_tensor], 2)  
 
-        return features.transpose_(0, 1), lengths, tag_list
+        if layer == 'hidden': return sentence_tensor.transpose_(0, 1), lengths, tag_list
+
+        features = self.linear(sentence_tensor)
+        
+        if layer == 'logits' or layer is None: return features.transpose_(0, 1), lengths, tag_list
+                
+        raise ValueError('Layer must be chosen from embeddings, hidden and logits')
 
     def _score_sentence(self, feats, tags, lens_):
 

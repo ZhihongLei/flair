@@ -33,8 +33,22 @@ def def_task(s):
         raise argparse.ArgumentTypeError('Task should be in format: TaskName:DataPath.')
     return task, path
 
+def def_additional_model_inputs(s):
+    try:
+        path, from_type, to_type = s.split(':')
+    except:
+        raise argparse.ArgumentTypeError('Additional Model Inputs should be in format: ModelPath:FromType:ToType.')
+    from_types = ['embeddings', 'hidden', 'logits']
+    to_types = ['embeddings', 'hidden']
+    if from_type in from_types and to_type in to_types:
+        return path, from_type, to_type
+    if from_type not in from_types:
+        raise argparse.ArgumentTypeError('FromType must be chosen from: {}.'.format(', '.join(from_types)))
+    else:
+        raise argparse.ArgumentTypeError('ToType must be chosen from: {}.'.format(', '.join(to_types)))
 
-parser = argparse.ArgumentParser(description='Train Flair NER model')
+
+parser = argparse.ArgumentParser(description='Train Flair model')
 parser.add_argument('--task', type=def_task, required=True, help='Task and data path')
 parser.add_argument('--tag-type', required=True, help='Tag type to train')
 parser.add_argument('--word-embeddings', nargs='*', help='Type(s) of word embeddings')
@@ -43,6 +57,7 @@ parser.add_argument('--flair-embeddings', nargs='*', help='Type(s) of Flair embe
 parser.add_argument('--relearn-embeddings', action='store_true', help='Re-learn embeddings, might be useful when using pretrained embeddings')
 parser.add_argument('--pooled-flair-embeddings', nargs='*', type=def_pooled_embeddings, help="Type(s) of pooled Flair embeddings")
 parser.add_argument('--additional-embeddings', nargs='*', type=def_additional_embeddings, help="Type(s) of additional input tag embeddings")
+parser.add_argument('--additional-model-inputs', nargs='*',type=def_additional_model_inputs, help='Use these models\' output of a given layer as input to some layer of the model')
 parser.add_argument('--hidden-size', type=int, default=256, help='Hidden layer size')
 parser.add_argument('--num-hidden-layers', type=int, default=1, help='Number of hidden layers')
 parser.add_argument('--dropout-rate', type=float, default=0.0, help='Dropout rate')
@@ -139,6 +154,15 @@ print('Dropout rate: {}'.format(args.dropout_rate))
 # initialize sequence tagger
 from flair.models import SequenceTagger
 
+additional_model_paths: List[str] = []
+additional_model_from_types: List[str] = []
+additional_model_to_types: List[str] = []
+
+if args.additional_model_inputs:
+    for path, from_type, to_type in args.additional_model_inputs:
+        additional_model_paths.append(path)
+        additional_model_from_types.append(from_type)
+        additional_model_to_types.append(to_type)
 
 
 if os.path.isdir(args.working_dir) and os.path.isfile(os.path.join(args.working_dir, 'best-model.pt')):
@@ -158,11 +182,14 @@ else:
                                         use_crf=True,
                                         rnn_layers=args.num_hidden_layers,
                                         rnn_dropout=args.dropout_rate,
-                                        relearn_embeddings=args.relearn_embeddings)
+                                        relearn_embeddings=args.relearn_embeddings,
+                                        additional_model_paths=additional_model_paths, 
+                                        additional_model_from_types=additional_model_from_types, 
+                                        additional_model_to_types=additional_model_to_types)
 
 
 #print(tagger.parameters)
-#print(tagger.state_dict().keys())
+print(tagger.state_dict)
 from flair.trainers import ModelTrainer
 trainer: ModelTrainer = ModelTrainer(tagger, corpus, optimizer)
 
