@@ -444,9 +444,9 @@ class SequenceTagger(flair.nn.Model):
             tag_list.append(tag)
 
         
-        for from_type, to_type, model in zip(self.additional_model_from_types, self.additional_model_to_types):
+        for from_type, to_type, model in zip(self.additional_model_from_types, self.additional_model_to_types, self.additional_models):
             if to_type == 'embeddings':
-                additional_sentence_tensor = model.get_layer_output(sentences, from_type, self.train_additional_models)
+                additional_sentence_tensor = model.get_layer_output(sentences, from_type)
                 sentence_tensor = torch.cat([sentence_tensor, additional_sentence_tensor], 2)            
 
         if layer == 'embeddings': return sentence_tensor, lengths, tag_list
@@ -481,9 +481,9 @@ class SequenceTagger(flair.nn.Model):
             if self.use_locked_dropout > 0.0:
                 sentence_tensor = self.locked_dropout(sentence_tensor)
 
-        for from_type, to_type, model in zip(self.additional_model_from_types, self.additional_model_to_types):
+        for from_type, to_type, model in zip(self.additional_model_from_types, self.additional_model_to_types, self.additional_models):
             if to_type == 'hidden':
-                additional_sentence_tensor = model.get_layer_output(sentences, from_type, self.train_additional_models)
+                additional_sentence_tensor = model.get_layer_output(sentences, from_type)
                 additional_sentence_tensor = additional_sentence_tensor.transpose_(0, 1)
                 sentence_tensor = torch.cat([sentence_tensor, additional_sentence_tensor], 2)  
 
