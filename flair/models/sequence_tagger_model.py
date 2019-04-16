@@ -171,13 +171,8 @@ class SequenceTagger(flair.nn.Model):
         self.rnn_type = 'LSTM'
         if self.rnn_type in ['LSTM', 'GRU']:
 
-            if self.nlayers == 1:
-                self.rnn = getattr(torch.nn, self.rnn_type)(rnn_input_dim, hidden_size,
-                                                            num_layers=self.nlayers,
-                                                            bidirectional=True)
-            else:
-                self.rnn = getattr(torch.nn, self.rnn_type)(rnn_input_dim, hidden_size,
-                                                            num_layers=self.nlayers,
+            self.rnn = getattr(torch.nn, self.rnn_type)(rnn_input_dim, hidden_size,
+                                                            num_layers=1,
                                                             dropout=rnn_dropout,
                                                             bidirectional=True)
 
@@ -187,9 +182,20 @@ class SequenceTagger(flair.nn.Model):
         for from_type, to_type, model in zip(self.additional_model_from_types, self.additional_model_to_types, self.additional_models):
             if to_type == 'hidden':
                 self.real_hidden_size += model.get_output_size(from_type)
+        
+        if self.nlayers == 1:
+            self.rnn2 = None
+            linear_in_features = self.real_hidden_size
+        else:
+            self.rnn2 = getattr(torch.nn, self.rnn_type)(self.real_hidden_size, hidden_size,
+                                                            num_layers=self.nlayers - 1,
+                                                            dropout=rnn_dropout,
+                                                            bidirectional=True)
+            linear_in_features = hidden_size * 2
+            
             
         if self.use_rnn:
-            self.linear = torch.nn.Linear(self.real_hidden_size, len(tag_dictionary))
+            self.linear = torch.nn.Linear(linear_in_features, len(tag_dictionary))
         else:
             self.linear = torch.nn.Linear(self.real_embedding_length, len(tag_dictionary))
 
@@ -474,20 +480,38 @@ class SequenceTagger(flair.nn.Model):
             rnn_output, hidden = self.rnn(packed)
 
             sentence_tensor, output_lengths = torch.nn.utils.rnn.pad_packed_sequence(rnn_output)
+            
+            if self.nlayers == 1:
+                if self.use_dropout > 0.0:
+                    sentence_tensor = self.dropout(sentence_tensor)
+                    # word dropout only before LSTM - TODO: more experimentation needed
+                    # if self.use_word_dropout > 0.0:
+                    #     sentence_tensor = self.word_dropout(sentence_tensor)
+                if self.use_locked_dropout > 0.0:
+                    sentence_tensor = self.locked_dropout(sentence_tensor)
 
-            if self.use_dropout > 0.0:
-                sentence_tensor = self.dropout(sentence_tensor)
-            # word dropout only before LSTM - TODO: more experimentation needed
-            # if self.use_word_dropout > 0.0:
-            #     sentence_tensor = self.word_dropout(sentence_tensor)
-            if self.use_locked_dropout > 0.0:
-                sentence_tensor = self.locked_dropout(sentence_tensor)
+            
 
         for from_type, to_type, model in zip(self.additional_model_from_types, self.additional_model_to_types, self.additional_models):
             if to_type == 'hidden':
                 additional_sentence_tensor = model.get_layer_output(sentences, from_type)
                 additional_sentence_tensor = additional_sentence_tensor.transpose_(0, 1)
                 sentence_tensor = torch.cat([sentence_tensor, additional_sentence_tensor], 2)  
+                
+        if self.use_rnn:
+            if self.nlayers > 1:
+                packed = torch.nn.utils.rnn.pack_padded_sequence(sentence_tensor, output_lengths)
+                rnn_output, hidden = self.rnn2(packed)
+                sentence_tensor, output_lengths = torch.nn.utils.rnn.pad_packed_sequence(rnn_output)
+            
+            
+                if self.use_dropout > 0.0:
+                    sentence_tensor = self.dropout(sentence_tensor)
+                    # word dropout only before LSTM - TODO: more experimentation needed
+                    # if self.use_word_dropout > 0.0:
+                    #     sentence_tensor = self.word_dropout(sentence_tensor)
+                if self.use_locked_dropout > 0.0:
+                    sentence_tensor = self.locked_dropout(sentence_tensor)
 
         if layer == 'hidden': return sentence_tensor.transpose_(0, 1), lengths, tag_list
 
