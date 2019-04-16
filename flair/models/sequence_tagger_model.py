@@ -397,8 +397,13 @@ class SequenceTagger(flair.nn.Model):
         raise ValueError('Layer must be chosen from embeddings, hidden and logits')
 
 
-    def get_layer_output(self, sentences: List[Sentence], layer, sort=True, update=False):
-        self.train(update)
+    def train(self, mode=True):
+        flair.nn.Model.train(self, mode=mode)
+        if self.train_additional_models:
+            self.additional_models.train(mode)
+        
+
+    def get_layer_output(self, sentences: List[Sentence], layer, sort=True):
         return self.forward(sentences, sort, layer)[0]
 
 
@@ -439,7 +444,7 @@ class SequenceTagger(flair.nn.Model):
             tag_list.append(tag)
 
         
-        for from_type, to_type, model in zip(self.additional_model_from_types, self.additional_model_to_types, self.additional_models):
+        for from_type, to_type, model in zip(self.additional_model_from_types, self.additional_model_to_types):
             if to_type == 'embeddings':
                 additional_sentence_tensor = model.get_layer_output(sentences, from_type, self.train_additional_models)
                 sentence_tensor = torch.cat([sentence_tensor, additional_sentence_tensor], 2)            
@@ -476,7 +481,7 @@ class SequenceTagger(flair.nn.Model):
             if self.use_locked_dropout > 0.0:
                 sentence_tensor = self.locked_dropout(sentence_tensor)
 
-        for from_type, to_type, model in zip(self.additional_model_from_types, self.additional_model_to_types, self.additional_models):
+        for from_type, to_type, model in zip(self.additional_model_from_types, self.additional_model_to_types):
             if to_type == 'hidden':
                 additional_sentence_tensor = model.get_layer_output(sentences, from_type, self.train_additional_models)
                 additional_sentence_tensor = additional_sentence_tensor.transpose_(0, 1)
