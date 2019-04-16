@@ -399,8 +399,10 @@ class SequenceTagger(flair.nn.Model):
 
     def train(self, mode=True):
         flair.nn.Model.train(self, mode=mode)
-        if self.train_additional_models:
-            self.additional_models.train(mode)
+        if isinstance(self.additional_models, torch.nn.ModuleList):
+            print(mode, self.additional_models.training)
+        #if self.train_additional_models:
+        #    self.additional_models.train(mode)
         
 
     def get_layer_output(self, sentences: List[Sentence], layer, sort=True):
