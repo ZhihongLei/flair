@@ -397,10 +397,10 @@ class SequenceTagger(flair.nn.Model):
         raise ValueError('Layer must be chosen from embeddings, hidden and logits')
 
 
-    def train(self, mode=True):
-        flair.nn.Model.train(self, mode=mode)
-        if isinstance(self.additional_models, torch.nn.ModuleList):
-            print(mode, self.additional_models.training)
+    #def train(self, mode=True):
+    #    flair.nn.Model.train(self, mode=mode)
+        #if isinstance(self.additional_models, torch.nn.ModuleList):
+        #    print(mode, self.additional_models.training)
         #if self.train_additional_models:
         #    self.additional_models.train(mode)
         
