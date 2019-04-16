@@ -58,6 +58,7 @@ parser.add_argument('--relearn-embeddings', action='store_true', help='Re-learn 
 parser.add_argument('--pooled-flair-embeddings', nargs='*', type=def_pooled_embeddings, help="Type(s) of pooled Flair embeddings")
 parser.add_argument('--additional-embeddings', nargs='*', type=def_additional_embeddings, help="Type(s) of additional input tag embeddings")
 parser.add_argument('--additional-model-inputs', nargs='*',type=def_additional_model_inputs, help='Use these models\' output of a given layer as input to some layer of the model')
+parser.add_argument('--train-additional-models', action='store_true', help='Also train additional models')
 parser.add_argument('--hidden-size', type=int, default=256, help='Hidden layer size')
 parser.add_argument('--num-hidden-layers', type=int, default=1, help='Number of hidden layers')
 parser.add_argument('--dropout-rate', type=float, default=0.0, help='Dropout rate')
@@ -185,7 +186,8 @@ else:
                                         relearn_embeddings=args.relearn_embeddings,
                                         additional_model_paths=additional_model_paths, 
                                         additional_model_from_types=additional_model_from_types, 
-                                        additional_model_to_types=additional_model_to_types)
+                                        additional_model_to_types=additional_model_to_types,
+                                        train_additional_models=args.train_additional_models)
 
 
 #print(tagger.parameters)

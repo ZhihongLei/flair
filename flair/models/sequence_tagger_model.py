@@ -85,7 +85,8 @@ class SequenceTagger(flair.nn.Model):
                  relearn_embeddings: bool =True,
                  additional_model_paths: List[str] = [],
                  additional_model_from_types: List[str] = [],
-                 additional_model_to_types: List[str] = []
+                 additional_model_to_types: List[str] = [],
+                 train_additional_models=False
                  ):
         
 
@@ -98,11 +99,13 @@ class SequenceTagger(flair.nn.Model):
         self.additional_model_paths = additional_model_paths
         self.additional_model_from_types = additional_model_from_types
         self.additional_model_to_types = additional_model_to_types
+        self.train_additional_models = train_additional_models
         
         self.additional_models = []
         for from_type, to_type, path in zip(additional_model_from_types, additional_model_to_types, additional_model_paths):
             model = SequenceTagger.load_from_file(path)
-            model.freeze_model()
+            if not train_additional_models:
+                model.freeze_model()
             model.to(flair.device)
             self.additional_models.append(model)
 
@@ -230,7 +233,8 @@ class SequenceTagger(flair.nn.Model):
             'relearn_embeddings': self.relearn_embeddings,
             'additional_model_paths': self.additional_model_paths, 
             'additional_model_from_types': self.additional_model_from_types, 
-            'additional_model_to_types': self.additional_model_to_types
+            'additional_model_to_types': self.additional_model_to_types,
+            'train_additional_models': self.train_additional_models
         }
 
         self.save_torch_model(model_state, str(model_file), self.pickle_module)
@@ -254,6 +258,7 @@ class SequenceTagger(flair.nn.Model):
             'additional_model_paths': self.additional_model_paths, 
             'additional_model_from_types': self.additional_model_from_types, 
             'additional_model_to_types': self.additional_model_to_types,
+            'train_additional_models': self.train_additional_models,
             'optimizer_state_dict': optimizer_state,
             'scheduler_state_dict': scheduler_state,
             'epoch': epoch,
@@ -287,6 +292,7 @@ class SequenceTagger(flair.nn.Model):
             additional_model_paths=state['additional_model_paths'] if 'additional_model_paths' in state else [],
             additional_model_from_types=state['additional_model_from_types'] if 'additional_model_from_types' in state else [],
             additional_model_to_types=state['additional_model_to_types'] if 'additional_model_to_types' in state else [],
+            train_additional_models=state['train_additional_models'] if 'train_additional_models' in state else False
             )
         model.load_state_dict(state['state_dict'])
         model.train(not eval)
