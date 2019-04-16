@@ -190,8 +190,8 @@ else:
                                         train_additional_models=args.train_additional_models)
 
 
-#print(tagger.parameters)
-print(tagger.state_dict)
+print(tagger.parameters)
+#print(tagger.state_dict)
 from flair.trainers import ModelTrainer
 trainer: ModelTrainer = ModelTrainer(tagger, corpus, optimizer)
 

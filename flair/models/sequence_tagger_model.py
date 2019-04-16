@@ -108,6 +108,8 @@ class SequenceTagger(flair.nn.Model):
                 model.freeze_model()
             model.to(flair.device)
             self.additional_models.append(model)
+        if train_additional_models:
+            self.additional_models = torch.nn.ModuleList(self.additional_models)
 
 
         self.use_rnn = use_rnn
