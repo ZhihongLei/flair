@@ -1,7 +1,6 @@
 from typing import List
 import argparse
 import os
-import gpustat
 import torch
 from torch.optim.adam import Adam
 from torch.optim.sgd import SGD
@@ -69,19 +68,6 @@ parser.add_argument('--working-dir', default='.', help='Working directory where 
 
 
 args = parser.parse_args()
-'''
-try:
-    gpu_id = -1
-    for gpu in gpustat.new_query().gpus:
-        if len(gpu.processes) == 0: 
-            gpu_id = gpu.index
-            break
-    assert gpu_id != -1
-    os.environ["CUDA_VISIBLE_DEVICES"] = str(gpu_id)
-    print("Using GPU {}".format(os.environ["CUDA_VISIBLE_DEVICES"]))
-except:
-    print("Using CPU")
-'''
 print("CUDA_VISIBLE_DEVICES=", os.environ["CUDA_VISIBLE_DEVICES"])
 
 from flair.data_fetcher import NLPTaskDataFetcher, NLPTask
