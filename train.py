@@ -82,6 +82,7 @@ try:
 except:
     print("Using CPU")
 '''
+print("CUDA_VISIBLE_DEVICES=", os.environ["CUDA_VISIBLE_DEVICES"])
 
 from flair.data_fetcher import NLPTaskDataFetcher, NLPTask
 from flair.data import TaggedCorpus
