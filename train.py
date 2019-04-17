@@ -69,7 +69,7 @@ parser.add_argument('--working-dir', default='.', help='Working directory where 
 
 
 args = parser.parse_args()
-
+'''
 try:
     gpu_id = -1
     for gpu in gpustat.new_query().gpus:
@@ -81,6 +81,7 @@ try:
     print("Using GPU {}".format(os.environ["CUDA_VISIBLE_DEVICES"]))
 except:
     print("Using CPU")
+'''
 
 from flair.data_fetcher import NLPTaskDataFetcher, NLPTask
 from flair.data import TaggedCorpus
