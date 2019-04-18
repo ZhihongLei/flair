@@ -68,7 +68,7 @@ parser.add_argument('--working-dir', default='.', help='Working directory where 
 
 
 args = parser.parse_args()
-print("CUDA_VISIBLE_DEVICES={}".format(os.environ["CUDA_VISIBLE_DEVICES"]))
+print("CUDA_VISIBLE_DEVICES={}".format(os.environ.get("CUDA_VISIBLE_DEVICES")))
 
 from flair.data_fetcher import NLPTaskDataFetcher, NLPTask
 from flair.data import TaggedCorpus
