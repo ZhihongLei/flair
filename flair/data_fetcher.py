@@ -93,6 +93,8 @@ class NLPTask(Enum):
     AG_NEWS = 'ag_news'
     TREC_6 = 'trec-6'
     TREC_50 = 'trec-50'
+    
+    MONO = 'mono_en'
 
 
 class NLPTaskDataFetcher:
@@ -200,6 +202,10 @@ class NLPTaskDataFetcher:
         if task == NLPTask.NER_BASQUE.value:
             columns = {0: 'text', 1: 'ner'}
             return NLPTaskDataFetcher.load_column_corpus(data_folder, columns, tag_to_biloes='ner')
+        
+        if task == NLPTask.MONO.value:
+            columns = {0: 'text', 1: 'pos'}
+            return NLPTaskDataFetcher.load_column_corpus(data_folder, columns)
 
     @staticmethod
     def load_column_corpus(

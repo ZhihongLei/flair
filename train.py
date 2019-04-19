@@ -85,6 +85,9 @@ if task_name == 'conll03':
 elif task_name == 'ontoner':
     task = NLPTask.ONTONER
     embeddings_in_memory = False
+elif task_name == 'mono':
+    task = NLPTask.MONO
+    embeddings_in_memory = False
 else:
     raise NotImplementedError('{} is not implemented yet'.format(task_name))
 print('Task {}'.format(task.value))
