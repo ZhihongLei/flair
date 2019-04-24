@@ -456,7 +456,8 @@ class SequenceTagger(flair.nn.Model):
             if to_type == 'embeddings':
                 for s in sentences: s.clear_embeddings()
                 additional_sentence_tensor = model.get_layer_output(sentences, from_type)
-                sentence_tensor = torch.cat([sentence_tensor, additional_sentence_tensor], 2)            
+                sentence_tensor = torch.cat([sentence_tensor, additional_sentence_tensor], 2)    
+                for s in sentences: s.clear_embeddings()        
 
         if layer == 'embeddings': return sentence_tensor, lengths, tag_list
         
@@ -498,7 +499,8 @@ class SequenceTagger(flair.nn.Model):
                 for s in sentences: s.clear_embeddings()
                 additional_sentence_tensor = model.get_layer_output(sentences, from_type)
                 additional_sentence_tensor = additional_sentence_tensor.transpose_(0, 1)
-                sentence_tensor = torch.cat([sentence_tensor, additional_sentence_tensor], 2)  
+                sentence_tensor = torch.cat([sentence_tensor, additional_sentence_tensor], 2)
+                for s in sentences: s.clear_embeddings()
                 
         if self.use_rnn:
             if self.nlayers > 1:
