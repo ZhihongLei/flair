@@ -95,6 +95,7 @@ corpus: TaggedCorpus = NLPTaskDataFetcher.load_corpus(task, path)
 print(corpus)
 tag_type = args.tag_type
 
+print('Corpus has been read')
 # initialize embeddings
 embedding_types: List[TokenEmbeddings] = [WordEmbeddings(type) if type!='task-trained' \
                                             else NonStaticWordEmbeddings(100, corpus.make_vocab_dictionary(min_freq=2)) \
@@ -158,8 +159,6 @@ if args.additional_model_inputs:
 
 
 if os.path.isdir(args.working_dir) and os.path.isfile(os.path.join(args.working_dir, 'best-model.pt')):
-    #import distutils 
-    #distutils.dir_util.copy_tree(str(Path(args.working_dir)), str(Path(args.working_dir + '-old')))
     print('Loading initial model from ' + os.path.join(args.working_dir, 'best-model.pt'))
     tagger: SequenceTagger = SequenceTagger.load_from_file(os.path.join(args.working_dir, 'best-model.pt'), eval=False)
 else:
