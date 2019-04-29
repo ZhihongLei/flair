@@ -18,11 +18,11 @@ def def_pooled_embeddings(s):
 
 def def_additional_embeddings(s):
     try:
-        embedding, size = s.split(':')
+        tag, size = s.split(':')
         size = int(size)
     except:
         raise argparse.ArgumentTypeError('Additional embeddings should be in format: TagName:EmbeddingSize.')
-    return embedding, size
+    return tag, size
 
 
 def def_task(s):
@@ -56,6 +56,7 @@ parser.add_argument('--flair-embeddings', nargs='*', help='Type(s) of Flair embe
 parser.add_argument('--relearn-embeddings', action='store_true', help='Re-learn embeddings, might be useful when using pretrained embeddings')
 parser.add_argument('--pooled-flair-embeddings', nargs='*', type=def_pooled_embeddings, help="Type(s) of pooled Flair embeddings")
 parser.add_argument('--additional-embeddings', nargs='*', type=def_additional_embeddings, help="Type(s) of additional input tag embeddings")
+parser.add_argument('--window-size', type=int, default=1, help='Window size of additional embeddings')
 parser.add_argument('--additional-model-inputs', nargs='*',type=def_additional_model_inputs, help='Use these models\' output of a given layer as input to some layer of the model')
 parser.add_argument('--train-additional-models', action='store_true', help='Also train additional models')
 parser.add_argument('--hidden-size', type=int, default=256, help='Hidden layer size')
@@ -91,6 +92,7 @@ elif task_name == 'mono':
 else:
     raise NotImplementedError('{} is not implemented yet'.format(task_name))
 print('Task {}'.format(task.value))
+
 corpus: TaggedCorpus = NLPTaskDataFetcher.load_corpus(task, path)
 print(corpus)
 tag_type = args.tag_type
@@ -124,9 +126,11 @@ if args.additional_embeddings:
     for tag, size in args.additional_embeddings:
         d = corpus.make_tag_dictionary(tag_type=tag)
         additional_tag_dictionaries.append(d)
-        additional_tag_embeddings.append(NonStaticWordEmbeddings(size, d, tag))
+        additional_tag_embeddings.append(NonStaticWordEmbeddings(size, d, tag, args.window_size))
     additional_tag_embeddings = torch.nn.ModuleList(additional_tag_embeddings)
     for d in additional_tag_dictionaries: print(d.idx2item)
+
+                
 
 if args.optimizer == 'sgd':
     optimizer = SGD

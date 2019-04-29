@@ -20,7 +20,7 @@ class Dictionary:
     This class holds a dictionary that maps strings to IDs, used to generate one-hot encodings of strings.
     """
 
-    def __init__(self, add_unk=True):
+    def __init__(self, add_unk=True, add_pad=True):
         # init dictionaries
         self.item2idx: Dict[str, int] = {}
         self.idx2item: List[str] = []
@@ -28,6 +28,8 @@ class Dictionary:
         # in order to deal with unknown tokens, add <unk>
         if add_unk:
             self.add_item('<unk>')
+        if add_pad:
+            self.add_item('<pad>')
 
     def add_item(self, item: str) -> int:
         """

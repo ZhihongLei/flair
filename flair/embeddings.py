@@ -267,13 +267,15 @@ class NonStaticWordEmbeddings(TokenEmbeddings):
                  embedding_length: int,
                  dictionary: Dictionary,
                  field: str = None,
+                 window_size: int = 1
                  ):
         super().__init__()
         self.num_words = len(dictionary)
-        self.__embedding_length = embedding_length
+        self.__embedding_length = embedding_length * window_size
         self.field = field
+        self.window_size = window_size
         self.dictionary = dictionary
-        self.embeddings = torch.torch.nn.Embedding(self.num_words, self.embedding_length)
+        self.embeddings = torch.torch.nn.Embedding(self.num_words, embedding_length)
         self.static_embeddings = False
         self.name = 'non-static-word' if self.field is None else 'tag-{}'.format(self.field)
         self.to(flair.device)
@@ -284,32 +286,41 @@ class NonStaticWordEmbeddings(TokenEmbeddings):
     
     
     def _add_embeddings_internal(self, sentences: List[Sentence]):
-        for i, sentence in enumerate(sentences):
-
-            for token, token_idx in zip(sentence.tokens, range(len(sentence.tokens))):
+        left = (self.window_size - 1) // 2
+        right = self.window_size - 1 - left
+        for sentence in sentences:
+            for i, token in enumerate(sentence.tokens):
                 token: Token = token
-
-                if 'field' not in self.__dict__ or self.field is None:
-                    word = token.text
-                else:
-                    word = token.get_tag(self.field).value
+                embedding = None
+                for j in range(-left, right + 1):                    
+                    if 'field' not in self.__dict__ or self.field is None:
+                        if i + j < 0 or i + j >= len(sentence.tokens):
+                            word = '<pad>'
+                        else: word = sentence.tokens[i+j].text
+                    else:
+                        if i + j < 0 or i + j >= len(sentence.tokens):
+                            word = 'O'
+                        else:
+                            word = sentence.tokens[i+j].get_tag(self.field).value
                 
-                if word in self.dictionary:
-                    pass
-                elif word.lower() in self.dictionary:
-                    word = word.lower()
-                elif re.sub(r'\d', '#', word.lower()) in self.dictionary:
-                    word = re.sub(r'\d', '#', word.lower())
-                elif re.sub(r'\d', '0', word.lower()) in self.dictionary:
-                    word = re.sub(r'\d', '0', word.lower())
-                else:
-                    word = '<unk>'
-                    assert word in self.dictionary
-
-                lookup_tensor = torch.tensor(self.dictionary.get_idx_for_item(word), dtype=torch.long, device=flair.device)
-                word_embedding = self.embeddings(lookup_tensor)
-                token.set_embedding(self.name, word_embedding)
-        #print(self.embeddings(torch.tensor(21, dtype=torch.long)))
+                    if word in self.dictionary:
+                        pass
+                    elif word.lower() in self.dictionary:
+                        word = word.lower()
+                    elif re.sub(r'\d', '#', word.lower()) in self.dictionary:
+                        word = re.sub(r'\d', '#', word.lower())
+                    elif re.sub(r'\d', '0', word.lower()) in self.dictionary:
+                        word = re.sub(r'\d', '0', word.lower())
+                    else:
+                        word = '<unk>'
+                        assert word in self.dictionary
+    
+                    lookup_tensor = torch.tensor(self.dictionary.get_idx_for_item(word), dtype=torch.long, device=flair.device)
+                    word_embedding = self.embeddings(lookup_tensor)
+                    if embedding is not None:
+                        embedding = torch.cat([embedding, word_embedding], 0)
+                    else: embedding = word_embedding
+                token.set_embedding(self.name, embedding)
         return sentences
 
 
