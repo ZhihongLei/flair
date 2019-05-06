@@ -459,6 +459,7 @@ class NLPTaskDataFetcher:
             log.info('UTF-8 can\'t read: {} ... using "latin-1" instead.'.format(path_to_column_file))
             lines: List[str] = open(str(path_to_column_file), encoding='latin1').read().strip().split('\n')
 
+        log.info("Survived reading %s", str(path_to_column_file))
         # most data sets have the token text in the first column, if not, pass 'text' as column
         text_column: int = 0
         for column in column_name_map:
