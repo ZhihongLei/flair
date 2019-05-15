@@ -31,13 +31,14 @@ class Dictionary:
         if add_pad:
             self.add_item('<pad>')
 
-    def add_item(self, item: str) -> int:
+    def add_item(self, item: Union[str, bytes]) -> int:
         """
         add string - if already in dictionary returns its ID. if not in dictionary, it will get a new ID.
         :param item: a string for which to assign an id.
         :return: ID of string
         """
-        item = item.encode('utf-8')
+        if isinstance(item, str):
+            item = item.encode('utf-8')
         if item not in self.item2idx:
             self.idx2item.append(item)
             self.item2idx[item] = len(self.idx2item) - 1

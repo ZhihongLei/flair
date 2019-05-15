@@ -71,6 +71,7 @@ class SequenceTagger(flair.nn.Model):
                  hidden_size: int,
                  embeddings: flair.embeddings.TokenEmbeddings,
                  tag_dictionary: Dictionary,
+                 ner_dictionary: Dictionary,
                  tag_type: str,
                  additional_tag_embeddings: List[flair.embeddings.TokenEmbeddings] = [],
                  additional_tag_dictionaries: List[Dictionary] = [],
@@ -123,6 +124,7 @@ class SequenceTagger(flair.nn.Model):
 
         # set the dictionaries
         self.tag_dictionary: Dictionary = tag_dictionary
+        self.ner_dictionary = ner_dictionary
         self.tag_type: str = tag_type
         self.tagset_size: int = len(tag_dictionary)
         
@@ -206,7 +208,6 @@ class SequenceTagger(flair.nn.Model):
             self.transitions.detach()[:, self.tag_dictionary.get_idx_for_item(STOP_TAG)] = -10000
 
         self.to(flair.device)
-        
 
 
     @staticmethod
@@ -230,6 +231,7 @@ class SequenceTagger(flair.nn.Model):
             'embeddings': self.embeddings,
             'hidden_size': self.hidden_size,
             'tag_dictionary': self.tag_dictionary,
+            'ner_dictionary': self.ner_dictionary,
             'additional_tag_embeddings': self.additional_tag_embeddings,
             'additional_tag_dictionaries': self.additional_tag_dictionaries,
             'tag_type': self.tag_type,
@@ -254,6 +256,7 @@ class SequenceTagger(flair.nn.Model):
             'embeddings': self.embeddings,
             'hidden_size': self.hidden_size,
             'tag_dictionary': self.tag_dictionary,
+            'ner_dictionary': self.ner_dictionary,
             'additional_tag_embeddings': self.additional_tag_embeddings,
             'additional_tag_dictionaries': self.additional_tag_dictionaries,
             'tag_type': self.tag_type,
@@ -287,6 +290,7 @@ class SequenceTagger(flair.nn.Model):
             hidden_size=state['hidden_size'],
             embeddings=state['embeddings'],
             tag_dictionary=state['tag_dictionary'],
+            ner_dictionary=state['ner_dictionary'] if 'ner_dictionary' in state else None,
             additional_tag_embeddings=state['additional_tag_embeddings'] if 'additional_tag_embeddings' in state else [],
             additional_tag_dictionaries=state['additional_tag_dictionaries'] if 'additional_tag_dictionaries' in state else [],
             tag_type=state['tag_type'],

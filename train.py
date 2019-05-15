@@ -117,6 +117,25 @@ embeddings: StackedEmbeddings = StackedEmbeddings(embeddings=embedding_types)
 
 
 tag_dictionary = corpus.make_tag_dictionary(tag_type=tag_type)
+assert tag_type == 'ner'
+
+pos_dictionary = corpus.make_tag_dictionary(tag_type='pos')
+ner_dictionary = corpus.make_tag_dictionary(tag_type=tag_type)
+
+for pos_tag in pos_dictionary.item2idx:
+    if pos_tag not in tag_dictionary:
+        tag_dictionary.add_item(pos_tag)
+
+# Let's change NER label from 'O' to PoS label
+for data in [corpus.train, corpus.dev, corpus.test]:
+    for sentence in data:
+        for token in sentence:
+            if token.get_tag(tag_type).value == 'O':
+                token.add_tag_label(tag_type, token.get_tag('pos'))
+
+print(' '.join('{}|{}'.format(token.text, token.get_tag(tag_type)) for token in corpus.train[1]))
+
+
 print(tag_dictionary.idx2item)
 
 
@@ -171,6 +190,7 @@ else:
     tagger: SequenceTagger = SequenceTagger(hidden_size=args.hidden_size,
                                         embeddings=embeddings,
                                         tag_dictionary=tag_dictionary,
+                                        ner_dictionary=ner_dictionary,
                                         additional_tag_embeddings=additional_tag_embeddings,
                                         additional_tag_dictionaries=additional_tag_dictionaries,
                                         tag_type=tag_type,
