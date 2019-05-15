@@ -17,17 +17,7 @@ parser.add_argument('--tag-type', required=True, help='Tag type to train')
 parser.add_argument('--working-dir', default='.', help='Working directory where outputs are stored')
 args = parser.parse_args()
 
-try:
-    gpu_id = -1
-    for gpu in gpustat.new_query().gpus:
-        if len(gpu.processes) == 0: 
-            gpu_id = gpu.index
-            break
-    assert gpu_id != -1
-    os.environ["CUDA_VISIBLE_DEVICES"] = str(gpu_id)
-    print("Using GPU {}".format(os.environ["CUDA_VISIBLE_DEVICES"]))
-except:
-    print("Using CPU")
+print("CUDA_VISIBLE_DEVICES={}".format(os.environ.get("CUDA_VISIBLE_DEVICES")))
 
 working_dir = args.working_dir
 
