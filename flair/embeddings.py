@@ -286,8 +286,8 @@ class NonStaticWordEmbeddings(TokenEmbeddings):
     
     
     def _add_embeddings_internal(self, sentences: List[Sentence]):
-        left = (self.window_size - 1) // 2
-        right = self.window_size - 1 - left
+        left = 0 #(self.window_size - 1) // 2
+        right = 0 #self.window_size - 1 - left
         for sentence in sentences:
             for i, token in enumerate(sentence.tokens):
                 token: Token = token
