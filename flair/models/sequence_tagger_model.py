@@ -72,7 +72,7 @@ class SequenceTagger(flair.nn.Model):
                  embeddings: flair.embeddings.TokenEmbeddings,
                  tag_dictionary: Dictionary,
                  tag_type: str,
-                 additional_tag_embeddings: List[flair.embeddings.TokenEmbeddings] = [],
+                 additional_tag_embeddings = [],
                  additional_tag_dictionaries: List[Dictionary] = [],
                  use_crf: bool = True,
                  use_rnn: bool = True,
