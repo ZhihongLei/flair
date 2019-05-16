@@ -319,7 +319,7 @@ class ModelTrainer:
                                           out_path: Path = None, test_data=False):
 
         metric, loss = ModelTrainer.evaluate(self.model, dataset, eval_mini_batch_size=eval_mini_batch_size,
-                                             embeddings_in_memory=embeddings_in_memory, out_path=out_path, test_data)
+                                             embeddings_in_memory=embeddings_in_memory, out_path=out_path, test_data=test_data)
 
         if evaluation_metric == EvaluationMetric.MACRO_ACCURACY or evaluation_metric == EvaluationMetric.MACRO_F1_SCORE:
             f_score = metric.macro_avg_f_score()
