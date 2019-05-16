@@ -189,7 +189,7 @@ class ModelTrainer:
                 if not param_selection_mode and self.corpus.test:
                     test_metric, test_loss = self._calculate_evaluation_results_for(
                         'TEST', self.corpus.test, evaluation_metric, embeddings_in_memory, eval_mini_batch_size,
-                        base_path / 'test.tsv')
+                        base_path / 'test.tsv', test_data=True)
 
                 if not param_selection_mode:
                     with open(loss_txt, 'a') as f:
@@ -275,7 +275,7 @@ class ModelTrainer:
                 self.model = SequenceTagger.load_from_file(base_path / 'best-model.pt')
 
         test_metric, test_loss = self.evaluate(self.model, self.corpus.test, eval_mini_batch_size=eval_mini_batch_size,
-                                               embeddings_in_memory=embeddings_in_memory)
+                                               embeddings_in_memory=embeddings_in_memory, test_data=True)
 
         log.info(f'MICRO_AVG: acc {test_metric.micro_avg_accuracy()} - f1-score {test_metric.micro_avg_f_score()}')
         log.info(f'MACRO_AVG: acc {test_metric.macro_avg_accuracy()} - f1-score {test_metric.macro_avg_f_score()}')
@@ -296,7 +296,7 @@ class ModelTrainer:
                                                        evaluation_metric,
                                                        embeddings_in_memory,
                                                        eval_mini_batch_size,
-                                                       base_path / 'test.tsv')
+                                                       base_path / 'test.tsv', test_data=True)
 
         # get and return the final test score of best model
         if evaluation_metric == EvaluationMetric.MACRO_ACCURACY:
@@ -316,10 +316,10 @@ class ModelTrainer:
                                           evaluation_metric: EvaluationMetric,
                                           embeddings_in_memory: bool,
                                           eval_mini_batch_size: int,
-                                          out_path: Path = None):
+                                          out_path: Path = None, test_data=False):
 
         metric, loss = ModelTrainer.evaluate(self.model, dataset, eval_mini_batch_size=eval_mini_batch_size,
-                                             embeddings_in_memory=embeddings_in_memory, out_path=out_path)
+                                             embeddings_in_memory=embeddings_in_memory, out_path=out_path, test_data)
 
         if evaluation_metric == EvaluationMetric.MACRO_ACCURACY or evaluation_metric == EvaluationMetric.MACRO_F1_SCORE:
             f_score = metric.macro_avg_f_score()
@@ -336,21 +336,21 @@ class ModelTrainer:
     def evaluate(model: flair.nn.Model, data_set: List[Sentence],
                  eval_mini_batch_size: int = 32,
                  embeddings_in_memory: bool = True,
-                 out_path: Path = None) -> (
+                 out_path: Path = None, test_data=False) -> (
             dict, float):
         if isinstance(model, TextClassifier):
             return ModelTrainer._evaluate_text_classifier(model, data_set, eval_mini_batch_size, embeddings_in_memory,
                                                           out_path)
         elif isinstance(model, SequenceTagger):
             return ModelTrainer._evaluate_sequence_tagger(model, data_set, eval_mini_batch_size, embeddings_in_memory,
-                                                          out_path)
+                                                          out_path, test_data)
 
     @staticmethod
     def _evaluate_sequence_tagger(model,
                                   sentences: List[Sentence],
                                   eval_mini_batch_size: int = 32,
                                   embeddings_in_memory: bool = True,
-                                  out_path: Path = None) -> (dict, float):
+                                  out_path: Path = None, test_data=False) -> (dict, float):
 
         with torch.no_grad():
             eval_loss = 0
@@ -371,7 +371,7 @@ class ModelTrainer:
                 for (sentence, sent_tags) in zip(batch, tags):
                     for (token, tag) in zip(sentence.tokens, sent_tags):
                         token: Token = token
-                        if tag.value not in model.ner_dictionary:
+                        if test_data and tag.value not in model.ner_dictionary:
                             tag = Label('O')
                         token.add_tag_label('predicted', tag)
 
