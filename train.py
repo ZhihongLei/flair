@@ -128,7 +128,7 @@ for pos_tag in pos_dictionary.item2idx:
 
 # Let's change NER label from 'O' to PoS label
 for data in [corpus.train, corpus.dev]:
-    for sentence in corpus.train:
+    for sentence in data:
         for token in sentence:
             if token.get_tag(tag_type).value == 'O':
                 token.add_tag_label(tag_type, token.get_tag('pos'))
