@@ -8,7 +8,7 @@ from torch.optim.sgd import SGD
 
 import flair
 import flair.nn
-from flair.data import Sentence, Token, MultiCorpus, Corpus
+from flair.data import Sentence, Token, MultiCorpus, Corpus, Label
 from flair.models import TextClassifier, SequenceTagger
 from flair.training_utils import Metric, init_output_file, WeightExtractor, clear_embeddings, EvaluationMetric, \
     log_line, add_file_handler
@@ -371,6 +371,8 @@ class ModelTrainer:
                 for (sentence, sent_tags) in zip(batch, tags):
                     for (token, tag) in zip(sentence.tokens, sent_tags):
                         token: Token = token
+                        if tag.value not in model.ner_dictionary:
+                            tag = Label('O')
                         token.add_tag_label('predicted', tag)
 
                         # append both to file for evaluation
