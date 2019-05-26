@@ -194,7 +194,7 @@ else:
                                         additional_tag_embeddings=additional_tag_embeddings,
                                         additional_tag_dictionaries=additional_tag_dictionaries,
                                         tag_type=tag_type,
-                                        use_crf=args.no_crf,
+                                        use_crf=not args.no_crf,
                                         rnn_layers=args.num_hidden_layers,
                                         rnn_dropout=args.dropout_rate,
                                         relearn_embeddings=args.relearn_embeddings,
