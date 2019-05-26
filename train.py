@@ -149,7 +149,7 @@ print('Using {}'.format(args.optimizer))
 print('Initial learning rate: {}'.format(args.init_lr))
 print('{} hidden layers of size {}'.format(args.num_hidden_layers, args.hidden_size))
 print('Dropout rate: {}'.format(args.dropout_rate))
-print('Using CRF: {}'.fomat(not args.no_crf))
+print('Using CRF: {}'.format(not args.no_crf))
 # initialize sequence tagger
 from flair.models import SequenceTagger
 
