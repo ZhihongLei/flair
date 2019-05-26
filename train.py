@@ -62,7 +62,7 @@ parser.add_argument('--train-additional-models', action='store_true', help='Also
 parser.add_argument('--hidden-size', type=int, default=256, help='Hidden layer size')
 parser.add_argument('--num-hidden-layers', type=int, default=1, help='Number of hidden layers')
 parser.add_argument('--dropout-rate', type=float, default=0.0, help='Dropout rate')
-parser.add_argument('--no-crf', action='store_false', help='Do not use CRF')
+parser.add_argument('--no-crf', action='store_true', help='Do not use CRF')
 parser.add_argument('--optimizer', default='sgd', choices=['sgd', 'adam'], help='Type of optimizer')
 parser.add_argument('--init-lr', type=float, default=0.1, help='Initial learning rate')
 parser.add_argument('--num-epochs', type=int, default=20, help='Number of epochs')
