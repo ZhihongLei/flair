@@ -62,6 +62,7 @@ parser.add_argument('--train-additional-models', action='store_true', help='Also
 parser.add_argument('--hidden-size', type=int, default=256, help='Hidden layer size')
 parser.add_argument('--num-hidden-layers', type=int, default=1, help='Number of hidden layers')
 parser.add_argument('--dropout-rate', type=float, default=0.0, help='Dropout rate')
+parser.add_argument('--no-crf', action='store_false', help='Do not use CRF')
 parser.add_argument('--optimizer', default='sgd', choices=['sgd', 'adam'], help='Type of optimizer')
 parser.add_argument('--init-lr', type=float, default=0.1, help='Initial learning rate')
 parser.add_argument('--num-epochs', type=int, default=20, help='Number of epochs')
@@ -148,6 +149,7 @@ print('Using {}'.format(args.optimizer))
 print('Initial learning rate: {}'.format(args.init_lr))
 print('{} hidden layers of size {}'.format(args.num_hidden_layers, args.hidden_size))
 print('Dropout rate: {}'.format(args.dropout_rate))
+print('Using CRF: {}'.fomat(not args.no_crf))
 # initialize sequence tagger
 from flair.models import SequenceTagger
 
@@ -174,7 +176,7 @@ else:
                                         additional_tag_embeddings=additional_tag_embeddings,
                                         additional_tag_dictionaries=additional_tag_dictionaries,
                                         tag_type=tag_type,
-                                        use_crf=True,
+                                        use_crf=not args.no_crf,
                                         rnn_layers=args.num_hidden_layers,
                                         rnn_dropout=args.dropout_rate,
                                         relearn_embeddings=args.relearn_embeddings,
