@@ -90,11 +90,23 @@ elif task_name == 'ontoner':
 elif task_name == 'mono':
     task = NLPTask.MONO
     embeddings_in_memory = False
+    columns = {0: 'text', 1: 'pos'}
 else:
     raise NotImplementedError('{} is not implemented yet'.format(task_name))
 print('Task {}'.format(task.value))
 
-corpus: TaggedCorpus = NLPTaskDataFetcher.load_corpus(task, path)
+
+train_files = []
+for file in Path(path).iterdir():
+    file_name = file.name
+    if 'train' in file_name and not '54019' in file_name:
+        train_files.append(file)
+
+
+if task_name == 'mono':
+    corpus = NLPTaskDataFetcher.load_column_corpus(data_folder, columns, train_file=train_files[0])
+else:
+    corpus: TaggedCorpus = NLPTaskDataFetcher.load_corpus(task, path)
 print(corpus)
 tag_type = args.tag_type
 
@@ -189,7 +201,7 @@ else:
 print(tagger.parameters)
 #print(tagger.state_dict)
 from flair.trainers import ModelTrainer
-trainer: ModelTrainer = ModelTrainer(tagger, corpus, optimizer)
+trainer: ModelTrainer = ModelTrainer(tagger, train_files, dev, test, columns, optimizer)
 
 trainer.train(args.working_dir, EvaluationMetric.MICRO_F1_SCORE, learning_rate=args.init_lr, mini_batch_size=32,
               max_epochs=args.num_epochs, anneal_factor=anneal_factor, embeddings_in_memory=embeddings_in_memory)
