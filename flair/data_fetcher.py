@@ -492,7 +492,6 @@ class NLPTaskDataFetcher:
             sentence.infer_space_after()
             sentences.append(sentence)
 
-        log.info("Survived reading %s", str(path_to_column_file))
         return sentences
 
     @staticmethod
