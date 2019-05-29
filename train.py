@@ -98,14 +98,14 @@ print('Task {}'.format(task.value))
 
 
 train_files = []
-for file in Path(path).iterdir():
+for file in (Path(path)/task.value.lower()).iterdir():
     file_name = file.name
     if 'train' in file_name and not '54019' in file_name:
         train_files.append(file)
 
 
 if task_name == 'mono':
-    corpus = NLPTaskDataFetcher.load_column_corpus(data_folder, columns, train_file=train_files[0])
+    corpus = NLPTaskDataFetcher.load_column_corpus(Path(path)/task.value.lower(), columns, train_file=train_files[0])
 else:
     corpus: TaggedCorpus = NLPTaskDataFetcher.load_corpus(task, path)
 print(corpus)
