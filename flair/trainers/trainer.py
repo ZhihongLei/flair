@@ -34,7 +34,6 @@ class ModelTrainer:
                  scheduler_state: dict = None
                  ):
         self.model: flair.nn.Model = model
-        self.corpus = corpus
         self.optimizer: Optimizer = optimizer
         self.epoch: int = epoch
         self.loss: float = loss
