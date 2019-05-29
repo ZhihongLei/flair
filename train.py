@@ -101,8 +101,9 @@ train_files = []
 for file in (Path(path)/task.value.lower()).iterdir():
     file_name = file.name
     if 'train' in file_name and not '54019' in file_name:
-        train_files.append(file)
+        train_files.append(file_name)
 
+print('training files:', train_files)
 
 corpus: TaggedCorpus = NLPTaskDataFetcher.load_corpus(task, path)
 print(corpus)

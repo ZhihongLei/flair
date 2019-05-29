@@ -438,7 +438,7 @@ class NLPTaskDataFetcher:
         return sentences
 
     @staticmethod
-    def read_column_data(path_to_column_file: Path,
+    def read_column_data(path_to_column_file: Union[Path, str], 
                          column_name_map: Dict[int, str],
                          infer_whitespace_after: bool = True):
         """
