@@ -104,10 +104,7 @@ for file in (Path(path)/task.value.lower()).iterdir():
         train_files.append(file)
 
 
-if task_name == 'mono':
-    corpus = NLPTaskDataFetcher.load_column_corpus(Path(path)/task.value.lower(), columns, train_file=train_files[0])
-else:
-    corpus: TaggedCorpus = NLPTaskDataFetcher.load_corpus(task, path)
+corpus: TaggedCorpus = NLPTaskDataFetcher.load_corpus(task, path)
 print(corpus)
 tag_type = args.tag_type
 
@@ -202,7 +199,7 @@ else:
 print(tagger.parameters)
 #print(tagger.state_dict)
 from flair.trainers import ModelTrainer
-trainer: ModelTrainer = ModelTrainer(tagger, train_files, dev, test, columns, optimizer)
+trainer: ModelTrainer = ModelTrainer(tagger, train_files, corpus.dev, corpus.test, columns, optimizer)
 
 trainer.train(args.working_dir, EvaluationMetric.MICRO_F1_SCORE, learning_rate=args.init_lr, mini_batch_size=32,
               max_epochs=args.num_epochs, anneal_factor=anneal_factor, embeddings_in_memory=embeddings_in_memory)
