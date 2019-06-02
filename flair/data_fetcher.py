@@ -440,7 +440,7 @@ class NLPTaskDataFetcher:
     @staticmethod
     def read_column_data(path_to_column_file: Union[Path, str], 
                          column_name_map: Dict[int, str],
-                         infer_whitespace_after: bool = True):
+                         infer_whitespace_after: bool = True, max_len=None):
         """
         Reads a file in column format and produces a list of Sentence with tokenlevel annotation as specified in the
         column_name_map. For instance, by passing "{0: 'text', 1: 'pos', 2: 'np', 3: 'ner'}" as column_name_map you
@@ -473,7 +473,7 @@ class NLPTaskDataFetcher:
                 continue
 
             if line.strip().replace('﻿', '') == '':
-                if len(sentence) > 0:
+                if len(sentence) > 0 and len(sentence) < (max_len if max_len is not None else float('inf')):
                     sentence.infer_space_after()
                     sentences.append(sentence)
                 sentence: Sentence = Sentence()
@@ -488,7 +488,7 @@ class NLPTaskDataFetcher:
 
                 sentence.add_token(token)
 
-        if len(sentence.tokens) > 0:
+        if len(sentence) > 0 and len(sentence) < (max_len if max_len is not None else float('inf')):
             sentence.infer_space_after()
             sentences.append(sentence)
 

@@ -117,7 +117,7 @@ class ModelTrainer:
                 if quit_training: break 
                 random.shuffle(self.train_files)
                 for train_file in self.train_files:
-                    train_data = NLPTaskDataFetcher.read_column_data(train_file, self.column_format)
+                    train_data = NLPTaskDataFetcher.read_column_data(train_file, self.column_format, max_len=300)
                     log_line(log)
     
                     try:
@@ -514,7 +514,7 @@ class ModelTrainer:
 
         optimizer = self.optimizer(self.model.parameters(), lr=start_learning_rate, **kwargs)
 
-        train_data = train_data = NLPTaskDataFetcher.read_column_data(self.train_files[0], self.column_format)
+        train_data = train_data = NLPTaskDataFetcher.read_column_data(self.train_files[0], self.column_format, max_len=300)
         random.shuffle(train_data)
         batches = [train_data[x:x + mini_batch_size] for x in range(0, len(train_data), mini_batch_size)][:iterations]
 
