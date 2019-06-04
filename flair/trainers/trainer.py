@@ -5,6 +5,7 @@ import datetime
 import random
 import logging
 from torch.optim.sgd import SGD
+import gc
 
 import flair
 import flair.nn
@@ -241,7 +242,7 @@ class ModelTrainer:
                     if not train_with_dev and not param_selection_mode and current_score == scheduler.best:
                         self.model.save(base_path / 'best-model.pt')
 
-                    del train_data
+                    gc.collect()
 
                 if quit_training: break
             # if we do not use dev data for model selection, save final model
