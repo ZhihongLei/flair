@@ -423,7 +423,7 @@ class MyLanguageModel(nn.Module):
         return feature, hx
     
         
-    def forward(self, sentences: List[Sentence], sort=True, layer=None):
+    def forward(self, sentences: List[Sentence], sort=True, reduce_loss=True, layer=None):
         self.zero_grad()
         if sort:
             sentences.sort(key=lambda x: len(x), reverse=True)
@@ -447,13 +447,13 @@ class MyLanguageModel(nn.Module):
         features = self.linear(sentence_tensor)
         features = features.transpose_(0, 1)
 
-        cross_entroy_loss = torch.nn.CrossEntropyLoss(ignore_index=self.dictionary.get_idx_for_item('<pad>'), reduction='sum')
+        cross_entroy_loss = torch.nn.CrossEntropyLoss(ignore_index=self.dictionary.get_idx_for_item('<pad>'), reduction='sum' if reduce_loss else 'none')
         loss = cross_entroy_loss(features.transpose_(1, 2), targets)
         #print(lengths[-2], loss[-2])
         num_words = torch.tensor(np.sum(lengths))
         #loss = torch.sum(loss)
         
-        return loss/num_words, num_words
+        return loss/num_words if reduce_loss else loss, num_words
     
     @staticmethod
     def save_torch_model(model_state: dict, model_file: str, pickle_module: str = 'pickle', pickle_protocol: int = 4):

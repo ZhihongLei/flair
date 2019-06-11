@@ -909,7 +909,7 @@ def _validate_dict(tagger_dict, lm_dict):
 
 
 
-def beam_search_one_sentence(tagger_feature, length, beam_size, lm: MyLanguageModel, tagger: SequenceTagger):
+def beam_search_one_sentence(tagger_feature, length, beam_size, lm: MyLanguageModel, tagger: SequenceTagger, lm_weight, rescoring=False):
     
     beam = Beam(beam_size, tagger.tag_dictionary)
     
@@ -928,51 +928,101 @@ def beam_search_one_sentence(tagger_feature, length, beam_size, lm: MyLanguageMo
         slice_tensor = lm.get_embeddings(sentences)
         return slice_tensor
     
-    hx = lm.init_state(beam_size)
-    for i in range(length):
-        emission_score = tagger_feature[i]
-        
-        slice_tensor = get_slice_tensor(beam.get_current_state())
-        feature, hidden = lm.forward_step(slice_tensor, hx)
-        
-        lm_score = feature.view(beam_size, -1)
-        lm_score = torch.nn.functional.log_softmax(lm_score, dim=1)
-        
-        transition_score = torch.zeros(beam_size, tagger.tagset_size)
-        if tagger.use_crf:
-            prev_tags = beam.get_current_state()
-            for i, prev in enumerate(prev_tags):
-                transition_score[i] = tagger.transitions.transpose(0, 1)[prev]
-        else:
-            emission_score = torch.nn.functional.log_softmax(emission_score, dim=-1)
-        
-        score = emission_score + transition_score + lm_score * 0.2
-        
-        
-        beam.advance(score)
-        for i, k in enumerate(beam.get_current_origin()):
-            if isinstance(hx, tuple):
-                hx[0][0][i] = hidden[0][0][k]
-                hx[1][0][i] = hidden[1][0][k]
-            else:
-                hx[0][i] = hidden[0][k]
+    
+    if not rescoring:
+        hx = lm.init_state(beam_size)
+        for i in range(length):
+            emission_score = tagger_feature[i]
             
-    return beam.get_hyp(beam.get_best()[1]), beam.get_best()[0]
+            slice_tensor = get_slice_tensor(beam.get_current_state())
+            feature, hidden = lm.forward_step(slice_tensor, hx)
+            
+            lm_score = feature.view(beam_size, -1)
+            lm_score = torch.nn.functional.log_softmax(lm_score, dim=1)
+            
+            if tagger.use_crf:
+                transition_score = torch.zeros(beam_size, tagger.tagset_size)
+                prev_tags = beam.get_current_state()
+                for i, prev in enumerate(prev_tags):
+                    transition_score[i] = tagger.transitions.transpose(0, 1)[prev]
+                
+                # apply log to tagger score ?
+                score = emission_score + transition_score + lm_score * lm_weight
+            else:
+                emission_score = torch.nn.functional.log_softmax(emission_score, dim=-1)
+                score = emission_score + lm_score * lm_weight
+            
+            
+            beam.advance(score)
+            for i, k in enumerate(beam.get_current_origin()):
+                if isinstance(hx, tuple):
+                    hx[0][0][i] = hidden[0][0][k]
+                    hx[1][0][i] = hidden[1][0][k]
+                else:
+                    hx[0][i] = hidden[0][k]
+                
+        return beam.get_hyp(beam.get_best()[1]), beam.get_best()[0]
+    
+    else:
+        for i in range(length):
+            emission_score = tagger_feature[i]
+            if tagger.use_crf:
+                prev_tags = beam.get_current_state()
+                transition_score = torch.zeros(beam_size, tagger.tagset_size)
+                for i, prev in enumerate(prev_tags):
+                    transition_score[i] = tagger.transitions.transpose(0, 1)[prev]  
+                
+                score = emission_score + transition_score
+            else:
+                emission_score = torch.nn.functional.log_softmax(emission_score, dim=-1)
+                score = emission_score.expand((beam_size, tagger.tagset_size))
+            
+            beam.advance(score)
+                
+        tags = [torch.LongTensor(beam.get_hyp(i)) for i in range(beam_size)]
+        tags, _ = pad_tensors(tags)
+                
+        if tagger.use_crf:
+            forward_score = tagger._forward_alg(torch.unsqueeze(tagger_feature, 0), [length])
+            hyp_scores = tagger._score_sentence(tagger_feature.expand((beam_size, -1, -1)), tags, [length for _ in range(beam_size)])
+            tagger_score = hyp_scores - forward_score
+        else:
+            tagger_score = beam.scores
         
+        sentences = []
+        for i in range(beam_size):
+            sentence = Sentence()
+            start_token = Token(START_TAG)
+            for tag in ['pos', 'np', 'ner']:
+                start_token.add_tag(tag, START_TAG)
+            sentence.add_token(start_token)
+            for j in range(length):
+                token = Token(tagger.tag_dictionary.get_item_for_index(tags[i][j].item()))
+                for tag in ['pos', 'np', 'ner']:
+                    token.add_tag(tag, tagger.tag_dictionary.get_item_for_index(tags[i][j].item()))
+                sentence.add_token(token)
+            sentences.append(sentence)
+        
+        lm_losses, num_words = lm.forward(sentences, sort=False, reduce_loss=False)
+        lm_score = -lm_losses.sum(dim=1)
+        
+        scores = tagger_score + lm_score * lm_weight
+        scores, idxs = torch.sort(scores, 0 , True)
+        
+        return beam.get_hyp(idxs[0]), scores[0]
         
 
 
-def beam_search(sentences: List[Sentence], tagger: SequenceTagger, lm: MyLanguageModel, beam_size):
+def beam_search(sentences: List[Sentence], tagger: SequenceTagger, lm: MyLanguageModel, beam_size, lm_weight):
     with torch.no_grad():
         sentences.sort(key=lambda x: len(x), reverse=True)
         tagger_features, lengths, gold_tags = tagger.forward(sentences, sort=False)
-        
         tags = []
         
         assert _validate_dict(tagger.tag_dictionary.item2idx, lm.dictionary.item2idx)
-        
+                
         for tagger_feature, length in zip(tagger_features, lengths):
-            hyp, score = beam_search_one_sentence(tagger_feature, length, beam_size, lm, tagger)
+            hyp, score = beam_search_one_sentence(tagger_feature, length, beam_size, lm, tagger, lm_weight)
             tags.append([Label(tagger.tag_dictionary.get_item_for_index(x.item()))for x in hyp])
     return tags     
 
@@ -980,6 +1030,7 @@ def beam_search(sentences: List[Sentence], tagger: SequenceTagger, lm: MyLanguag
 def evalute_beam_search(tagger,
                         lm,
                         sentences: List[Sentence],
+                        lm_weight,
                         beam_size=10,
                         eval_mini_batch_size: int = 32,
                         embeddings_in_memory: bool = True,
@@ -997,7 +1048,7 @@ def evalute_beam_search(tagger,
         for batch in batches:
             batch_no += 1
 
-            tags = beam_search(batch, tagger, lm, beam_size)
+            tags = beam_search(batch, tagger, lm, beam_size, lm_weight)
             loss = 0
 
             eval_loss += loss
