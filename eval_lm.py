@@ -24,9 +24,6 @@ args = parser.parse_args()
 
 print("CUDA_VISIBLE_DEVICES={}".format(os.environ.get("CUDA_VISIBLE_DEVICES")))
 
-
-
-
 tag_type = args.tag_type
 task, path = args.task
 log.info('Task {}'.format(task))
@@ -42,7 +39,7 @@ for data in [corpus.train, corpus.dev, corpus.test]:
         start_token.idx = -1
         start_token.sentence = sentence
         sentence.tokens.insert(0, start_token)
-        sentence.add_token(end_token)
+        #sentence.add_token(end_token)
         
 log.info(corpus)
 

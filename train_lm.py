@@ -84,7 +84,7 @@ else:
     log.info('Initialize model')
 
     from flair.models import SequenceTagger
-    #tagger = SequenceTagger.load_from_file('/Users/zhihonglei/work/hiwi/conll03-ner-word-task-trained-256-0.1/best-model.pt', eval=False)
+    tagger = SequenceTagger.load_from_file('/Users/zhihonglei/work/hiwi/conll03-ner-word-task-trained-256-0.1/best-model.pt', eval=False)
     #dictionary = tagger.tag_dictionary
     dictionary = corpus.make_vocab_dictionary(min_freq=2) if tag_type == 'text' else corpus.make_tag_dictionary(tag_type)
     
@@ -135,4 +135,4 @@ log.info('Working dir: ' + working_dir)
 
 
 trainer = MyLMTrainer(model, corpus, optimizer)
-trainer.train(base_path=working_dir, learning_rate=lr, mini_batch_size=16, max_epochs=args.num_epochs)
+trainer.train(base_path=working_dir, learning_rate=lr, mini_batch_size=16, max_epochs=args.num_epochs, anneal_factor=anneal_factor, anneal_against_train_loss=False)

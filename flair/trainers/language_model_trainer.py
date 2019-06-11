@@ -583,7 +583,7 @@ class MyLMTrainer:
                 dev_loss_history.append(dev_loss)
 
                 # anneal against train loss if training with dev, otherwise anneal against dev score
-                current_loss = train_loss if anneal_against_train_loss else dev_score
+                current_loss = train_loss if anneal_against_train_loss else dev_loss
 
                 scheduler.step(current_loss)
 
@@ -622,6 +622,7 @@ class MyLMTrainer:
                                   
 
         with torch.no_grad():
+            model.eval()
             eval_loss = 0
             total_num_words = 0
 
