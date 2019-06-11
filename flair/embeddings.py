@@ -295,7 +295,7 @@ class NonStaticWordEmbeddings(TokenEmbeddings):
                 token: Token = token
                 embedding = None
                 for j in range(-left, right + 1):                    
-                    if 'field' not in self.__dict__ or self.field is None:
+                    if 'field' not in self.__dict__ or self.field is None or self.field == 'text':
                         if i + j < 0 or i + j >= len(sentence.tokens):
                             word = '<pad>'
                         else: word = sentence.tokens[i+j].text

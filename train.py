@@ -81,6 +81,7 @@ from flair.visual.training_curves import Plotter
 
 
 task_name, path = args.task
+emb_sz = 100
 if task_name == 'conll03':
     task = NLPTask.CONLL_03
     embeddings_in_memory = True
@@ -90,6 +91,10 @@ elif task_name == 'ontoner':
 elif task_name == 'mono':
     task = NLPTask.MONO
     embeddings_in_memory = False
+elif task_name == 'conll03-pos-ner':
+    task = NLPTask.CONLL_03_POSNER
+    embeddings_in_memory = True
+    emb_sz = 15
 else:
     raise NotImplementedError('{} is not implemented yet'.format(task_name))
 print('Task {}'.format(task.value))
@@ -101,7 +106,7 @@ tag_type = args.tag_type
 print('Corpus has been read')
 # initialize embeddings
 embedding_types: List[TokenEmbeddings] = [WordEmbeddings(type) if type!='task-trained' \
-                                            else NonStaticWordEmbeddings(100, corpus.make_vocab_dictionary(min_freq=2)) \
+                                            else NonStaticWordEmbeddings(emb_sz, corpus.make_vocab_dictionary(min_freq=2)) \
                                           for type in args.word_embeddings]
 if args.char_embeddings:
      embedding_types.append(CharacterEmbeddings())
@@ -192,7 +197,8 @@ from flair.trainers import ModelTrainer
 trainer: ModelTrainer = ModelTrainer(tagger, corpus, optimizer)
 
 trainer.train(args.working_dir, EvaluationMetric.MICRO_F1_SCORE, learning_rate=args.init_lr, mini_batch_size=32,
-              max_epochs=args.num_epochs, anneal_factor=anneal_factor, embeddings_in_memory=embeddings_in_memory)
+              max_epochs=args.num_epochs, anneal_factor=anneal_factor, embeddings_in_memory=embeddings_in_memory, 
+              anneal_with_restarts=True, anneal_against_train_loss=False)
 
 plotter = Plotter()
 plotter.plot_training_curves('{}/loss.tsv'.format(args.working_dir))

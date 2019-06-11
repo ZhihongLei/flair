@@ -727,6 +727,8 @@ class TaggedCorpus(Corpus):
         vocab_dictionary: Dictionary = Dictionary()
         for token in tokens:
             vocab_dictionary.add_item(token)
+        vocab_dictionary.add_item('<START>')
+        vocab_dictionary.add_item('<STOP>')
 
         return vocab_dictionary
 
