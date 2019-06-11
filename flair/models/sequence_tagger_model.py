@@ -297,7 +297,7 @@ class SequenceTagger(flair.nn.Model):
             dropout=use_dropout,
             word_dropout=use_word_dropout,
             locked_dropout=use_locked_dropout,
-            relearn_embeddings=state['relearn_embeddings'],
+            relearn_embeddings=state['relearn_embeddings'] if 'relearn_embeddings' in state else True,
             additional_model_paths=state['additional_model_paths'] if 'additional_model_paths' in state else [],
             additional_model_from_types=state['additional_model_from_types'] if 'additional_model_from_types' in state else [],
             additional_model_to_types=state['additional_model_to_types'] if 'additional_model_to_types' in state else [],
@@ -907,8 +907,6 @@ def _validate_dict(tagger_dict, lm_dict):
 
 
 
-
-
 def beam_search_one_sentence(tagger_feature, length, beam_size, lm: MyLanguageModel, tagger: SequenceTagger, lm_weight, rescoring=False):
     
     beam = Beam(beam_size, tagger.tag_dictionary)
@@ -941,7 +939,7 @@ def beam_search_one_sentence(tagger_feature, length, beam_size, lm: MyLanguageMo
             lm_score = torch.nn.functional.log_softmax(lm_score, dim=1)
             
             if tagger.use_crf:
-                transition_score = torch.zeros(beam_size, tagger.tagset_size)
+                transition_score = torch.zeros(beam_size, tagger.tagset_size, device=flair.device)
                 prev_tags = beam.get_current_state()
                 for i, prev in enumerate(prev_tags):
                     transition_score[i] = tagger.transitions.transpose(0, 1)[prev]
@@ -968,7 +966,7 @@ def beam_search_one_sentence(tagger_feature, length, beam_size, lm: MyLanguageMo
             emission_score = tagger_feature[i]
             if tagger.use_crf:
                 prev_tags = beam.get_current_state()
-                transition_score = torch.zeros(beam_size, tagger.tagset_size)
+                transition_score = torch.zeros(beam_size, tagger.tagset_size, device=flair.device)
                 for i, prev in enumerate(prev_tags):
                     transition_score[i] = tagger.transitions.transpose(0, 1)[prev]  
                 
@@ -1013,7 +1011,7 @@ def beam_search_one_sentence(tagger_feature, length, beam_size, lm: MyLanguageMo
         
 
 
-def beam_search(sentences: List[Sentence], tagger: SequenceTagger, lm: MyLanguageModel, beam_size, lm_weight):
+def beam_search(sentences: List[Sentence], tagger: SequenceTagger, lm: MyLanguageModel, beam_size, lm_weight, rescoring=False):
     with torch.no_grad():
         sentences.sort(key=lambda x: len(x), reverse=True)
         tagger_features, lengths, gold_tags = tagger.forward(sentences, sort=False)
@@ -1022,7 +1020,7 @@ def beam_search(sentences: List[Sentence], tagger: SequenceTagger, lm: MyLanguag
         assert _validate_dict(tagger.tag_dictionary.item2idx, lm.dictionary.item2idx)
                 
         for tagger_feature, length in zip(tagger_features, lengths):
-            hyp, score = beam_search_one_sentence(tagger_feature, length, beam_size, lm, tagger, lm_weight)
+            hyp, score = beam_search_one_sentence(tagger_feature, length, beam_size, lm, tagger, lm_weight, rescoring)
             tags.append([Label(tagger.tag_dictionary.get_item_for_index(x.item()))for x in hyp])
     return tags     
 
@@ -1032,7 +1030,8 @@ def evalute_beam_search(tagger,
                         sentences: List[Sentence],
                         lm_weight,
                         beam_size=10,
-                        eval_mini_batch_size: int = 32,
+                        rescoring=False,
+                        eval_mini_batch_size: int = 16,
                         embeddings_in_memory: bool = True,
                         out_path: Path = None) -> (dict, float):
 
@@ -1048,7 +1047,7 @@ def evalute_beam_search(tagger,
         for batch in batches:
             batch_no += 1
 
-            tags = beam_search(batch, tagger, lm, beam_size, lm_weight)
+            tags = beam_search(batch, tagger, lm, beam_size, lm_weight, rescoring)
             loss = 0
 
             eval_loss += loss

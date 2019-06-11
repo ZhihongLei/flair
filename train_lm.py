@@ -67,7 +67,7 @@ for data in [corpus.train, corpus.dev, corpus.test]:
         start_token.idx = -1
         start_token.sentence = sentence
         sentence.tokens.insert(0, start_token)
-        sentence.add_token(end_token)
+        #sentence.add_token(end_token)
         
 log.info(corpus)
 
@@ -84,9 +84,10 @@ else:
     log.info('Initialize model')
 
     from flair.models import SequenceTagger
-    tagger = SequenceTagger.load_from_file('/Users/zhihonglei/work/hiwi/conll03-ner-word-task-trained-256-0.1/best-model.pt', eval=False)
-    #dictionary = corpus.make_vocab_dictionary(min_freq=2) if tag_type == 'text' else corpus.make_tag_dictionary(tag_type)
-    dictionary = tagger.tag_dictionary
+    #tagger = SequenceTagger.load_from_file('/Users/zhihonglei/work/hiwi/conll03-ner-word-task-trained-256-0.1/best-model.pt', eval=False)
+    #dictionary = tagger.tag_dictionary
+    dictionary = corpus.make_vocab_dictionary(min_freq=2) if tag_type == 'text' else corpus.make_tag_dictionary(tag_type)
+    
     embedding_size = args.embedding_size
     embeddings = NonStaticWordEmbeddings(embedding_size, dictionary, tag_type)
     
