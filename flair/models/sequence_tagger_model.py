@@ -907,20 +907,23 @@ def _validate_dict(tagger_dict, lm_dict):
 
 
 
-def beam_search_one_sentence(tagger_feature, length, beam_size, lm: MyLanguageModel, tagger: SequenceTagger, lm_weight, rescoring=False):
+def beam_search_one_sentence(sentence, tagger_feature, length, beam_size, lm: MyLanguageModel, tagger: SequenceTagger, lm_weight, rescoring=False):
     
     beam = Beam(beam_size, tagger.tag_dictionary)
     
-    def get_slice_tensor(slice):
+    def get_slice_tensor(slice, token):
         sentences = []
         for i in range(beam_size):
             sentence = Sentence()
-            token = Token(slice[i])
+            new_token = Token(token.text)
             end_token = Token(STOP_TAG)
-            for tag in ['pos', 'np', 'ner']:
-                token.add_tag(tag,  tagger.tag_dictionary.get_item_for_index(slice[i].item()))
+            for tag in token.tags.keys():
+                if tag == tagger.tag_type:
+                    new_token.add_tag(tag,  tagger.tag_dictionary.get_item_for_index(slice[i].item()))
+                else:
+                    new_token.add_tag(tag, token.get_tag(tag).value)
                 end_token.add_tag(tag, STOP_TAG)
-            sentence.add_token(token)
+            sentence.add_token(new_token)
             sentence.add_token(end_token)
             sentences.append(sentence)
         slice_tensor = lm.get_embeddings(sentences)
@@ -932,7 +935,7 @@ def beam_search_one_sentence(tagger_feature, length, beam_size, lm: MyLanguageMo
         for i in range(length):
             emission_score = tagger_feature[i]
             
-            slice_tensor = get_slice_tensor(beam.get_current_state())
+            slice_tensor = get_slice_tensor(beam.get_current_state(), sentence.tokens[i])
             feature, hidden = lm.forward_step(slice_tensor, hx)
             
             lm_score = feature.view(beam_size, -1)
@@ -1019,8 +1022,8 @@ def beam_search(sentences: List[Sentence], tagger: SequenceTagger, lm: MyLanguag
         
         assert _validate_dict(tagger.tag_dictionary.item2idx, lm.dictionary.item2idx)
                 
-        for tagger_feature, length in zip(tagger_features, lengths):
-            hyp, score = beam_search_one_sentence(tagger_feature, length, beam_size, lm, tagger, lm_weight, rescoring)
+        for sentence, tagger_feature, length in zip(sentences, tagger_features, lengths):
+            hyp, score = beam_search_one_sentence(sentence, tagger_feature, length, beam_size, lm, tagger, lm_weight, rescoring)
             tags.append([Label(tagger.tag_dictionary.get_item_for_index(x.item()))for x in hyp])
     return tags     
 
