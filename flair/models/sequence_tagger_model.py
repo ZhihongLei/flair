@@ -934,8 +934,12 @@ def beam_search_one_sentence(sentence, tagger_feature, length, beam_size, lm: My
         hx = lm.init_state(beam_size)
         for i in range(length):
             emission_score = tagger_feature[i]
-            
-            slice_tensor = get_slice_tensor(beam.get_current_state(), sentence.tokens[i])
+            if i == 0:
+                token = Token('<START>')
+                for tag in sentence[0].tags.keys():
+                        token.add_tag(tag, '<START>')
+            else: token = sentence.tokens[i-1]
+            slice_tensor = get_slice_tensor(beam.get_current_state(), token)
             feature, hidden = lm.forward_step(slice_tensor, hx)
             
             lm_score = feature.view(beam_size, -1)
