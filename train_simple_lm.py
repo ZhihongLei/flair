@@ -1,29 +1,15 @@
-from typing import List
 import argparse
 import os
-import torch
 from torch.optim.adam import Adam
 from torch.optim.sgd import SGD
 
-from flair.data_fetcher import NLPTaskDataFetcher, NLPTask, Sentence, Token
+from flair.data_fetcher import NLPTaskDataFetcher
 from flair.data import TaggedCorpus
-from flair.embeddings import TokenEmbeddings, WordEmbeddings, StackedEmbeddings, CharacterEmbeddings, \
-                            FlairEmbeddings, PooledFlairEmbeddings, NonStaticWordEmbeddings
-from flair.training_utils import EvaluationMetric
-from flair.visual.training_curves import Plotter
-from flair.models.language_model import MyLanguageModel
-from flair.trainers.language_model_trainer import MyLMTrainer
+from flair.models.language_model import MySimpleLanguageModel
+from flair.trainers.language_model_trainer import MySimpleLMTrainer
 import logging
 
 log = logging.getLogger('flair')
-
-def def_additional_embeddings(s):
-    try:
-        tag, size = s.split(':')
-        size = int(size)
-    except:
-        raise argparse.ArgumentTypeError('Additional embeddings should be in format: TagName:EmbeddingSize.')
-    return tag, size
 
 def def_task(s):
     try:
@@ -38,8 +24,6 @@ parser = argparse.ArgumentParser(description='Train Flair model')
 parser.add_argument('--task', type=def_task, required=True, help='Task and data path')
 parser.add_argument('--tag-type', required=True, help='Tag type to train')
 parser.add_argument('--embedding-size', type=int, help='Embedding size')
-parser.add_argument('--additional-embeddings', nargs='*', type=def_additional_embeddings, help="Type(s) of additional input tag embeddings")
-parser.add_argument('--window-size', type=int, default=1, help='Window size of additional embeddings')
 parser.add_argument('--hidden-size', type=int, default=256, help='Hidden layer size')
 parser.add_argument('--num-hidden-layers', type=int, default=1, help='Number of hidden layers')
 parser.add_argument('--dropout-rate', type=float, default=0.0, help='Dropout rate')
@@ -57,71 +41,49 @@ task, path = args.task
 log.info('Task {}'.format(task))
 log.info('Tag type {}'.format(tag_type))
 corpus: TaggedCorpus = NLPTaskDataFetcher.load_corpus(task, path)
-for data in [corpus.train, corpus.dev, corpus.test]:
-    for sentence in data:
-        start_token = Token('<START>')
-        end_token = Token('<STOP>')
-        for tag in sentence[0].tags.keys():
-            start_token.add_tag(tag, '<START>')
-            end_token.add_tag(tag, '<STOP>')
-        start_token.idx = -1
-        start_token.sentence = sentence
-        sentence.tokens.insert(0, start_token)
-        #sentence.add_token(end_token)
-        
 log.info(corpus)
 
 
 if os.path.isdir(args.working_dir) and os.path.isfile(os.path.join(args.working_dir, 'best-model.pt')):
     log.info('Loading initial model from ' + os.path.join(args.working_dir, 'best-model.pt'))
-    model = MyLanguageModel.load_from_file(os.path.join(args.working_dir, 'best-model.pt'))
+    model = MySimpleLanguageModel.load_from_file(os.path.join(args.working_dir, 'best-model.pt'))
+    dictionary = model.dictionary
     embedding_size = model.embedding_size
-    additional_embeddings = model.additional_embeddings
-    additional_dictionaries = model.additional_dictionaries
     num_hidden_layers = model.nlayers
     hidden_size = model.hidden_size
-    dropout_rate = model.dropout_rate
+    dropout_rate = model.dropout
 else:
     log.info('Initialize model')
 
     from flair.models import SequenceTagger
-    tagger = SequenceTagger.load_from_file('/Users/zhihonglei/work/hiwi/conll03-ner-word-task-trained-256-0.1/best-model.pt', eval=False)
-    dictionary = tagger.tag_dictionary
-    #dictionary = corpus.make_vocab_dictionary(min_freq=2) if tag_type == 'text' else corpus.make_tag_dictionary(tag_type)
+    #tagger = SequenceTagger.load_from_file('/Users/zhihonglei/work/hiwi/conll03-ner-word-task-trained-256-0.1/best-model.pt', eval=False)
+    #dictionary = tagger.tag_dictionary
+
+    dictionary = corpus.make_vocab_dictionary(min_freq=2) if tag_type == 'text' else corpus.make_tag_dictionary(tag_type)
+    print(dictionary.item2idx)
     
     embedding_size = args.embedding_size
-    embeddings = NonStaticWordEmbeddings(embedding_size, dictionary, tag_type)
-    
-    additional_dictionaries = []
-    additional_embeddings = []
-    if args.additional_embeddings:
-        for tag, size in args.additional_embeddings:
-            d = corpus.make_tag_dictionary(tag_type=tag)
-            additional_dictionaries.append(d)
-            additional_embeddings.append(NonStaticWordEmbeddings(size, d, tag, args.window_size))
-    additional_embeddings = torch.nn.ModuleList(additional_embeddings)
-    
-
     num_hidden_layers = args.num_hidden_layers
     hidden_size = args.hidden_size
     dropout_rate = args.dropout_rate
     
-    model = MyLanguageModel(tag_type=tag_type, 
-                        embeddings=embeddings, 
+    model = MySimpleLanguageModel(tag_type=tag_type,
+                        embedding_size=embedding_size,
                         dictionary=dictionary, 
-                        additional_embeddings=additional_embeddings,
-                        additional_dictionaries=additional_dictionaries,
                         dropout=dropout_rate,
                         hidden_size=hidden_size, 
                         nlayers=num_hidden_layers)
 
 
 log.info('Embedding size: {}'.format(embedding_size))
-log.info('Using additional embeddings: {}'.format(str(additional_embeddings)))
 log.info('{} hidden layers of size {}'.format(num_hidden_layers, hidden_size))
 log.info('Dropout rate: {}'.format(dropout_rate))
 
-    
+
+train_data, dev_data, test_data = [[([dictionary.get_idx_for_item('<START>')] + [dictionary.get_idx_for_item(token.get_tag(tag_type).value)
+                                        for token in sentence.tokens]) for sentence in data]
+                                   for data in [corpus.train, corpus.dev, corpus.test]]
+
 lr = args.lr
 working_dir = args.working_dir
 if args.optimizer == 'sgd':
@@ -137,5 +99,5 @@ log.info('Initial learning rate: {}'.format(lr))
 log.info('Working dir: ' + working_dir)
 
 
-trainer = MyLMTrainer(model, corpus, optimizer)
+trainer = MySimpleLMTrainer(model, train_data, dev_data, test_data, optimizer)
 trainer.train(base_path=working_dir, learning_rate=lr, mini_batch_size=16, max_epochs=args.num_epochs, anneal_factor=anneal_factor, anneal_against_train_loss=False)

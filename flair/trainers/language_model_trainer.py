@@ -448,7 +448,6 @@ class MyLMTrainer:
                  corpus: Corpus,
                  optimizer: Optimizer = SGD,
                  epoch:int = 0,
-                 loss: float = 10000.0,
                  optimizer_state: dict = None,
                  scheduler_state: dict = None
                  ):
@@ -456,7 +455,6 @@ class MyLMTrainer:
         self.corpus: Corpus = corpus
         self.optimizer: Optimizer = optimizer
         self.epoch: int = epoch
-        self.loss: float = loss
         self.scheduler_state: dict = scheduler_state
         self.optimizer_state: dict = optimizer_state
 
@@ -637,5 +635,215 @@ class MyLMTrainer:
 
             eval_loss /= total_num_words
 
+
+            return eval_loss, np.exp(eval_loss)
+
+
+
+class MySimpleLMTrainer:
+    def __init__(self,
+                 model,
+                 train_data,
+                 dev_data,
+                 test_data,
+                 optimizer: Optimizer = SGD,
+                 epoch: int = 0,
+                 optimizer_state: dict = None,
+                 scheduler_state: dict = None
+                 ):
+        self.model = model
+        self.train_data = train_data
+        self.dev_data = dev_data
+        self.test_data = test_data
+        self.optimizer: Optimizer = optimizer
+        self.epoch: int = epoch
+        self.scheduler_state: dict = scheduler_state
+        self.optimizer_state: dict = optimizer_state
+
+
+    def train(self,
+              base_path: Union[Path, str],
+              learning_rate: float = 0.1,
+              mini_batch_size: int = 32,
+              eval_mini_batch_size: int = None,
+              max_epochs: int = 100,
+              anneal_factor: float = 0.5,
+              patience: int = 3,
+              anneal_against_train_loss: bool = True,
+              checkpoint: bool = False,
+              anneal_with_restarts: bool = True,
+              **kwargs
+              ) -> dict:
+
+        if eval_mini_batch_size is None:
+            eval_mini_batch_size = mini_batch_size
+
+        # cast string to Path
+        if type(base_path) is str:
+            base_path = Path(base_path)
+
+        add_file_handler(log, base_path / 'training.log')
+
+        log_line(log)
+        weight_extractor = WeightExtractor(base_path)
+
+        optimizer = self.optimizer(self.model.parameters(), lr=learning_rate, **kwargs)
+        if self.optimizer_state is not None:
+            optimizer.load_state_dict(self.optimizer_state)
+
+        # annealing scheduler
+        anneal_mode = 'min'
+        if isinstance(optimizer, (AdamW, SGDW)):
+            scheduler = ReduceLRWDOnPlateau(optimizer, factor=anneal_factor,
+                                            patience=patience, mode=anneal_mode,
+                                            verbose=True)
+        else:
+            scheduler = ReduceLROnPlateau(optimizer, factor=anneal_factor,
+                                          patience=patience, mode=anneal_mode,
+                                          verbose=True)
+        if self.scheduler_state is not None:
+            scheduler.load_state_dict(self.scheduler_state)
+
+
+        dev_loss_history = []
+        train_loss_history = []
+
+        # At any point you can hit Ctrl + C to break out of training early.
+        try:
+            previous_learning_rate = learning_rate
+
+            for epoch in range(0 + self.epoch, max_epochs + self.epoch):
+                log_line(log)
+
+                try:
+                    bad_epochs = scheduler.num_bad_epochs
+                except:
+                    bad_epochs = 0
+                for group in optimizer.param_groups:
+                    learning_rate = group['lr']
+
+                # reload last best model if annealing with restarts is enabled
+                if learning_rate != previous_learning_rate and anneal_with_restarts and \
+                        (base_path / 'best-model.pt').exists():
+                    log.info('resetting to best model')
+                    self.model.load_from_file(base_path / 'best-model.pt')
+
+                previous_learning_rate = learning_rate
+
+                # stop training if learning rate becomes too small
+                if learning_rate < 0.0001:
+                    log_line(log)
+                    log.info('learning rate too small - quitting training!')
+                    log_line(log)
+                    break
+
+                random.shuffle(self.train_data)
+                batches = [self.train_data[x:x + mini_batch_size] for x in range(0, len(self.train_data), mini_batch_size)]
+
+                self.model.train()
+
+                train_loss: float = 0
+                total_num_words = 0
+                modulo = max(1, int(len(batches) / 10))
+
+                for batch_no, batch in enumerate(batches):
+                    batch.sort(key=lambda x: len(x), reverse=True)
+                    batch_size, max_seq_len = len(batch), len(batch[0])
+                    lengths = [len(s) - 1 for s in batch]
+                    batch_data = torch.LongTensor(batch_size, max_seq_len).fill_(0)
+                    for i in range(batch_size):
+                        batch_data[i][:lengths[i]+1] = torch.LongTensor(batch[i])
+
+
+
+                    loss, num_words = self.model.forward(batch_data, lengths)
+
+                    optimizer.zero_grad()
+                    loss.backward()
+                    # torch.nn.utils.clip_grad_norm_(self.model.parameters(), 5.0)
+                    optimizer.step()
+
+                    train_loss += (loss.item() * num_words.item())
+                    total_num_words += num_words.item()
+
+
+                    if batch_no % modulo == 0:
+                        log.info(f'epoch {epoch + 1} - iter {batch_no}/{len(batches)} - loss '
+                                 f'{train_loss / total_num_words:.8f}')
+                        iteration = epoch * len(batches) + batch_no
+                        weight_extractor.extract_weights(self.model.state_dict(), iteration)
+
+                train_loss /= total_num_words
+
+                self.model.eval()
+
+                log_line(log)
+                log.info(
+                    f'EPOCH {epoch + 1} done: loss {train_loss:.4f} - lr {learning_rate:.4f} - bad epochs {bad_epochs}')
+
+                dev_loss, dev_ppl = self.evaluate(self.model, self.dev_data, eval_mini_batch_size)
+                log.info(f'Dev loss: {dev_loss:.4f} Dev PPL: {dev_ppl:.4f}')
+                test_loss, test_ppl = self.evaluate(self.model, self.test_data, eval_mini_batch_size)
+                log.info(f'Test loss: {test_loss:.4f} Test PPL: {test_ppl:.4f}')
+
+                dev_loss_history.append(dev_loss)
+
+                # anneal against train loss if training with dev, otherwise anneal against dev score
+                current_loss = train_loss if anneal_against_train_loss else dev_loss
+
+                scheduler.step(current_loss)
+
+                train_loss_history.append(train_loss)
+
+                # if checkpoint is enable, save model at each epoch
+                if checkpoint:
+                    self.model.save_checkpoint(base_path / 'checkpoint.pt',
+                                               optimizer.state_dict(), scheduler.state_dict(),
+                                               epoch + 1, train_loss)
+
+                # if we use dev data, remember best model based on dev evaluation score
+                if current_loss == scheduler.best:
+                    self.model.save(base_path / 'best-model.pt')
+
+            self.model.save(base_path / 'final-model.pt')
+
+        except KeyboardInterrupt:
+            log_line(log)
+            log.info('Exiting from training early.')
+            log.info('Saving model ...')
+            self.model.save(base_path / 'final-model.pt')
+            log.info('Done.')
+
+        _, final_ppl = self.evaluate(self.model, self.test_data, eval_mini_batch_size)
+
+        return {'final_ppl': final_ppl,
+                'train_loss_history': train_loss_history,
+                'dev_loss_history': dev_loss_history}
+
+    @staticmethod
+    def evaluate(model,
+                 data, # [[ word indices]]
+                 eval_mini_batch_size: int = 32):
+
+        with torch.no_grad():
+            model.eval()
+            eval_loss = 0
+            total_num_words = 0
+
+            batches = [data[x:x + eval_mini_batch_size] for x in range(0, len(data), eval_mini_batch_size)]
+
+
+            for batch in batches:
+                batch.sort(key=lambda x: len(x), reverse=True)
+                batch_size, max_seq_len = len(batch), len(batch[0])
+                batch_data = torch.LongTensor(batch_size, max_seq_len).fill_(0)
+                lengths = [len(s) - 1 for s in batch]
+                for i in range(batch_size):
+                    batch_data[i][:lengths[i] + 1] = torch.LongTensor(batch[i])
+                loss, num_words = model.forward(batch_data, lengths)
+                eval_loss += (loss.item() * num_words.item())
+                total_num_words += num_words.item()
+
+            eval_loss /= total_num_words
 
             return eval_loss, np.exp(eval_loss)

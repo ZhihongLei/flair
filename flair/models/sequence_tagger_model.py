@@ -18,7 +18,7 @@ from typing import List, Tuple, Union
 from flair.training_utils import clear_embeddings
 
 from tqdm import tqdm
-from flair.models.language_model import MyLanguageModel
+from flair.models.language_model import MyLanguageModel, MySimpleLanguageModel
 from flair.training_utils import Metric
 
 log = logging.getLogger('flair')
@@ -907,40 +907,14 @@ def _validate_dict(tagger_dict, lm_dict):
 
 
 
-def beam_search_one_sentence(sentence, tagger_feature, length, beam_size, lm: MyLanguageModel, tagger: SequenceTagger, lm_weight, rescoring=False, return_all_hyps=False):
+def beam_search_one_sentence(tagger_feature, length, beam_size, lm: MySimpleLanguageModel, tagger: SequenceTagger, lm_weight, rescoring=False, return_all_hyps=False):
     
     beam = Beam(beam_size, tagger.tag_dictionary)
-    
-    def get_slice_tensor(slice, token):
-        sentences = []
-        for i in range(beam_size):
-            sentence = Sentence()
-            new_token = Token(token.text)
-            end_token = Token(STOP_TAG)
-            for tag in token.tags.keys():
-                if tag == tagger.tag_type:
-                    new_token.add_tag(tag,  tagger.tag_dictionary.get_item_for_index(slice[i].item()))
-                else:
-                    new_token.add_tag(tag, token.get_tag(tag).value)
-                end_token.add_tag(tag, STOP_TAG)
-            sentence.add_token(new_token)
-            sentence.add_token(end_token)
-            sentences.append(sentence)
-        slice_tensor = lm.get_embeddings(sentences)
-        return slice_tensor
-    
-    
     if not rescoring:
         hx = lm.init_state(beam_size)
         for i in range(length):
             emission_score = tagger_feature[i]
-            if i == 0:
-                token = Token('<START>')
-                for tag in sentence[0].tags.keys():
-                        token.add_tag(tag, '<START>')
-            else: token = sentence.tokens[i-1]
-            slice_tensor = get_slice_tensor(beam.get_current_state(), token)
-            feature, hidden = lm.forward_step(slice_tensor, hx)
+            feature, hidden = lm.forward_step(beam.get_current_state().view(beam_size, -1), hx)
             
             lm_score = feature.view(beam_size, -1)
             lm_score = torch.nn.functional.log_softmax(lm_score, dim=1)
@@ -1023,7 +997,7 @@ def beam_search_one_sentence(sentence, tagger_feature, length, beam_size, lm: My
         
 
 
-def beam_search(sentences: List[Sentence], tagger: SequenceTagger, lm: MyLanguageModel, beam_size, lm_weight, rescoring=False):
+def beam_search(sentences: List[Sentence], tagger: SequenceTagger, lm: MySimpleLanguageModel, beam_size, lm_weight, rescoring=False):
     with torch.no_grad():
         sentences.sort(key=lambda x: len(x), reverse=True)
         tagger_features, lengths, gold_tags = tagger.forward(sentences, sort=False)
@@ -1032,7 +1006,7 @@ def beam_search(sentences: List[Sentence], tagger: SequenceTagger, lm: MyLanguag
         assert _validate_dict(tagger.tag_dictionary.item2idx, lm.dictionary.item2idx)
                 
         for sentence, tagger_feature, length in zip(sentences, tagger_features, lengths):
-            hyp, score = beam_search_one_sentence(sentence, tagger_feature, length, beam_size, lm, tagger, lm_weight, rescoring)
+            hyp, score = beam_search_one_sentence(tagger_feature, length, beam_size, lm, tagger, lm_weight, rescoring)
             tags.append([Label(tagger.tag_dictionary.get_item_for_index(x.item()))for x in hyp])
     return tags     
 
@@ -1140,31 +1114,31 @@ class HybridSequenceTagger(flair.nn.Model):
             return beam_search(sentences, self.tagger, self.lm, self.beam_size, 1.0)
 
 
+    def insert_start_token(self, sentences):
+        sentences_copy = [copy.copy(s) for s in sentences]
+        clear_embeddings(sentences_copy, True)
+        for sentence in sentences_copy:
+            start_token = Token('<START>')
+            for tag in sentence[0].tags.keys():
+                start_token.add_tag(tag, '<START>')
+            start_token.idx = -1
+            start_token.sentence = sentence
+            sentence.tokens.insert(0, start_token)
+        return sentences_copy
+
     def score_sentences(self, sentences):
         tagger_features, lengths, gold_tags = self.tagger.forward(sentences, sort=False)
         gold_tags, _ = pad_tensors(gold_tags)
         tagger_gold_scores = self.tagger._score_sentence(tagger_features, gold_tags, lengths)
 
-        sentences_copy = [copy.copy(s) for s in sentences]
-        clear_embeddings(sentences_copy, True)
-        for sentence in sentences_copy:
-            start_token = Token('<START>')
-            end_token = Token('<STOP>')
-            for tag in sentence[0].tags.keys():
-                start_token.add_tag(tag, '<START>')
-                end_token.add_tag(tag, '<STOP>')
-            start_token.idx = -1
-            start_token.sentence = sentence
-            sentence.tokens.insert(0, start_token)
-
+        sentences_copy = self.insert_start_token(sentences)
         lm_gold_losses, num_words = self.lm.forward(sentences_copy, sort=False, reduce_loss=False)
         lm_gold_scores = -lm_gold_losses.sum(dim=1)
         gold_scores = tagger_gold_scores + lm_gold_scores
 
-        error_scores = torch.zeros_like(gold_scores)
-        for i, sentence, tagger_feature, length in zip(range(len(sentences)), sentences, tagger_features, lengths):
-            beam_sentences = []
-            with torch.no_grad():
+        beam_sentences = []
+        with torch.no_grad():
+            for i, sentence, tagger_feature, length in zip(range(len(sentences)), sentences, tagger_features, lengths):
                 hyps, scores = beam_search_one_sentence(sentence, tagger_feature, length, self.beam_size, self.lm, self.tagger, 1.0, return_all_hyps=True)
                 for hyp in hyps:
                     beam_sentence = copy.copy(sentence)
@@ -1172,26 +1146,20 @@ class HybridSequenceTagger(flair.nn.Model):
                         token.add_tag(self.tagger.tag_type, self.tagger.tag_dictionary.get_item_for_index(x.item()))
                     beam_sentences.append(beam_sentence)
 
-            tagger_beam_features, beam_lengths, beam_tags = self.tagger.forward(beam_sentences, sort=False, zero_grad=False)
-            beam_tags, _ = pad_tensors(beam_tags)
-            tagger_beam_scores = self.tagger._score_sentence(tagger_beam_features, beam_tags, beam_lengths)
 
-            sentences_copy = [copy.copy(s) for s in beam_sentences]
-            clear_embeddings(sentences_copy, True)
-            for s in sentences_copy:
-                start_token = Token('<START>')
-                end_token = Token('<STOP>')
-                for tag in sentence[0].tags.keys():
-                    start_token.add_tag(tag, '<START>')
-                    end_token.add_tag(tag, '<STOP>')
-                start_token.idx = -1
-                start_token.sentence = sentence
-                s.tokens.insert(0, start_token)
+        tagger_beam_features, beam_lengths, beam_tags = self.tagger.forward(beam_sentences, sort=False, zero_grad=False)
+        beam_tags, _ = pad_tensors(beam_tags)
+        tagger_beam_scores = self.tagger._score_sentence(tagger_beam_features, beam_tags, beam_lengths)
 
-            lm_beam_losses, beam_num_words = self.lm.forward(sentences_copy, sort=False, reduce_loss=False, zero_grad=False)
-            lm_beam_scores = -lm_beam_losses.sum(dim=1)
-            beam_scores = tagger_beam_scores + lm_beam_scores
-            error_scores[i] = torch.logsumexp(beam_scores, dim=0)
+        sentences_copy = self.insert_start_token(beam_sentences)
+        lm_beam_losses, beam_num_words = self.lm.forward(sentences_copy, sort=False, reduce_loss=False, zero_grad=False)
+        lm_beam_scores = -lm_beam_losses.sum(dim=1)
+
+        tagger_beam_scores = tagger_beam_scores.reshape(self.beam_size, -1).transpose(0, 1)
+        lm_beam_scores = lm_beam_scores.reshape(self.beam_size, -1).transpose(0, 1)
+
+        beam_scores = tagger_beam_scores + lm_beam_scores
+        error_scores = torch.logsumexp(beam_scores, dim=1)
 
         scores = gold_scores - error_scores
         return scores

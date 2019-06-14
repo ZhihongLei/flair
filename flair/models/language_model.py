@@ -12,6 +12,9 @@ from torch.optim import Optimizer
 import flair
 from flair.data import Dictionary, Sentence
 import numpy as np
+import logging
+
+log = logging.getLogger('flair')
 
 
 class LanguageModel(nn.Module):
@@ -551,3 +554,174 @@ class MyLanguageModel(nn.Module):
             state = torch.load(f, map_location=flair.device)
             return state
         
+
+
+class MySimpleLanguageModel(nn.Module):
+    def __init__(self,
+                 tag_type,
+                 embedding_size,
+                 dictionary,
+                 hidden_size: int,
+                 nlayers: int,
+                 dropout=0.):
+
+        super(MySimpleLanguageModel, self).__init__()
+
+        self.tag_type = tag_type
+        self.\
+            dropout = dropout
+        self.hidden_size = hidden_size
+        self.embedding_size = embedding_size
+        self.nlayers = nlayers
+        self.dictionary = dictionary
+
+        self.drop = nn.Dropout(dropout)
+        self.encoder = nn.Embedding(len(dictionary.item2idx), embedding_size)
+
+        if nlayers == 1:
+            self.rnn = nn.LSTM(embedding_size, hidden_size, nlayers)
+        else:
+            self.rnn = nn.LSTM(embedding_size, hidden_size, nlayers, dropout=dropout)
+
+        self.hidden = None
+
+        self.decoder = nn.Linear(hidden_size, len(dictionary))
+
+        #self.init_weights()
+
+        # auto-spawn on GPU if available
+        self.to(flair.device)
+
+
+    def init_weights(self):
+        initrange = 0.1
+        self.encoder.weight.detach().uniform_(-initrange, initrange)
+        self.decoder.bias.detach().fill_(0)
+        self.decoder.weight.detach().uniform_(-initrange, initrange)
+
+
+
+    def forward(self, batch, lengths, reduce_loss=True, zero_grad=True):
+        if zero_grad: self.zero_grad()
+        inputs = batch[range(batch.shape[0]), :-1]
+        targets = batch[range(batch.shape[0]), 1:]
+
+        sentence_tensor = self.encoder(inputs)
+        sentence_tensor = sentence_tensor.transpose_(0, 1)
+        if self.dropout > 0:
+            sentence_tensor = self.drop(sentence_tensor)
+        #self.rnn.flatten_parameters()
+        packed = torch.nn.utils.rnn.pack_padded_sequence(sentence_tensor, lengths)
+        rnn_output, hidden = self.rnn(packed)
+        sentence_tensor, output_lengths = torch.nn.utils.rnn.pad_packed_sequence(rnn_output)
+
+        features = self.decoder(sentence_tensor)
+        features = features.transpose_(0, 1)
+
+        cross_entroy_loss = torch.nn.CrossEntropyLoss(ignore_index=self.dictionary.get_idx_for_item('<pad>'),
+                                                      reduction='sum' if reduce_loss else 'none')
+        loss = cross_entroy_loss(features.transpose_(1, 2), targets)
+        num_words = torch.tensor(np.sum(lengths))
+
+        return loss / num_words if reduce_loss else loss, num_words
+
+
+    def forward_step(self, slice, hx):
+        slice_tensor = self.encoder(slice)
+        slice_tensor = slice_tensor.transpose_(0, 1)
+        rnn_output, hx = self.rnn(slice_tensor, hx)
+        feature = self.decoder(rnn_output)
+        return feature, hx
+
+
+    def init_state(self, bsz):
+        weight = next(self.parameters()).detach()
+        return (weight.new(self.nlayers, bsz, self.hidden_size).zero_().clone().detach(),
+                weight.new(self.nlayers, bsz, self.hidden_size).zero_().clone().detach())
+
+
+    @staticmethod
+    def save_torch_model(model_state: dict, model_file: str, pickle_module: str = 'pickle', pickle_protocol: int = 4):
+        if pickle_module == 'dill':
+            try:
+                import dill
+                torch.save(model_state, str(model_file), pickle_module=dill)
+            except:
+                log.warning('-' * 100)
+                log.warning('ATTENTION! The library "dill" is not installed!')
+                log.warning('Please first install "dill" with "pip install dill" to save the model!')
+                log.warning('-' * 100)
+                pass
+        else:
+            torch.save(model_state, str(model_file), pickle_protocol=pickle_protocol)
+
+    def save(self, model_file: Union[str, Path]):
+        model_state = {
+            'state_dict': self.state_dict(),
+            'tag_type': self.tag_type,
+            'embedding_size': self.embedding_size,
+            'dictionary': self.dictionary,
+            'hidden_size': self.hidden_size,
+            'nlayers': self.nlayers,
+            'dropout': self.dropout
+        }
+        self.save_torch_model(model_state, str(model_file))
+
+    def save_checkpoint(self, model_file: Union[str, Path], optimizer_state: dict, scheduler_state: dict, epoch: int,
+                        loss: float):
+        model_state = {
+            'state_dict': self.state_dict(),
+            'tag_type': self.tag_type,
+            'embedding_size': self.embedding_size,
+            'dictionary': self.dictionary,
+            'hidden_size': self.hidden_size,
+            'nlayers': self.nlayers,
+            'dropout': self.dropout,
+            'optimizer_state_dict': optimizer_state,
+            'scheduler_state_dict': scheduler_state,
+            'epoch': epoch,
+            'loss': loss
+        }
+        self.save_torch_model(model_state, str(model_file))
+
+    @classmethod
+    def load_from_file(cls, model_file: Union[str, Path]):
+        state = cls._load_state(model_file)
+        model = cls(state['tag_type'],
+                    state['embedding_size'],
+                    state['dictionary'],
+                    state['hidden_size'],
+                    state['nlayers'],
+                    state['dropout'])
+        model.load_state_dict(state['state_dict'])
+        model.eval()
+        model.to(flair.device)
+        return model
+
+    @classmethod
+    def load_checkpoint(cls, model_file: Union[str, Path]):
+        state = cls._load_state(model_file)
+        model = cls.load_from_file(model_file)
+
+        epoch = state['epoch'] if 'epoch' in state else None
+        loss = state['loss'] if 'loss' in state else None
+        optimizer_state_dict = state['optimizer_state_dict'] if 'optimizer_state_dict' in state else None
+        scheduler_state_dict = state['scheduler_state_dict'] if 'scheduler_state_dict' in state else None
+
+        return {
+            'model': model, 'epoch': epoch, 'loss': loss,
+            'optimizer_state_dict': optimizer_state_dict, 'scheduler_state_dict': scheduler_state_dict
+        }
+
+    @classmethod
+    def _load_state(cls, model_file: Union[str, Path]):
+        # ATTENTION: suppressing torch serialization warnings. This needs to be taken out once we sort out recursive
+        # serialization of torch objects
+        # https://docs.python.org/3/library/warnings.html#temporarily-suppressing-warnings
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore")
+            # load_big_file is a workaround by https://github.com/highway11git to load models on some Mac/Windows setups
+            # see https://github.com/zalandoresearch/flair/issues/351
+            f = flair.file_utils.load_big_file(str(model_file))
+            state = torch.load(f, map_location=flair.device)
+            return state

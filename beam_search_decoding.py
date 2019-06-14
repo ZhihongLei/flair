@@ -24,7 +24,7 @@ parser.add_argument('--rescoring', action='store_true', help='Using LM to rescor
 args = parser.parse_args()
 
 
-from flair.models.language_model import MyLanguageModel
+from flair.models.language_model import MyLanguageModel, MySimpleLanguageModel
 from flair.data_fetcher import NLPTaskDataFetcher, NLPTask
 from flair.data import TaggedCorpus
 from flair.models import SequenceTagger
@@ -32,7 +32,7 @@ from flair.models.sequence_tagger_model import beam_search, evalute_beam_search
 
 
 tagger = SequenceTagger.load_from_file(args.tagger_model, eval=True)
-lm = MyLanguageModel.load_from_file(args.language_model)
+lm = MySimpleLanguageModel.load_from_file(args.language_model)
 
 
 tag_type = args.tag_type

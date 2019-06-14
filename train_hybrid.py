@@ -47,6 +47,7 @@ def def_task(s):
 parser = argparse.ArgumentParser(description='Train Flair model')
 parser.add_argument('--task', type=def_task, required=True, help='Task and data path')
 parser.add_argument('--tag-type', required=True, help='Tag type to train')
+parser.add_argument('--beam-size', type=int, default=-1, help='Beam size')
 parser.add_argument('--word-embeddings', nargs='*', help='Type(s) of word embeddings')
 parser.add_argument('--char-embeddings', action='store_true', help='Character embeddings trained on task corpus, Lample 2016')
 parser.add_argument('--flair-embeddings', nargs='*', help='Type(s) of Flair embeddings')
@@ -122,12 +123,15 @@ else:
         additional_tag_embeddings = torch.nn.ModuleList(additional_tag_embeddings)
         for d in additional_tag_dictionaries: print(d.idx2item)
 
+    beam_size = len(tag_dictionary.item2idx) if args.beam_size == -1 else args.beam_size
+
     print('Using word embeddings: {}'.format(str(embedding_types)))
     print('Using additional tag embeddings: {}'.format(str(additional_tag_embeddings)))
     print('Re-learning embeddings: {}'.format(args.relearn_embeddings))
     print('{} hidden layers of size {}'.format(args.num_hidden_layers, args.hidden_size))
     print('Dropout rate: {}'.format(args.dropout_rate))
     print('Using CRF: {}'.format(not args.no_crf))
+    print(f'Beam size: {beam_size}')
 
     lm = MyLanguageModel(tag_type=tag_type,
                         embeddings=NonStaticWordEmbeddings(10, tag_dictionary, tag_type),
@@ -146,7 +150,7 @@ else:
                             rnn_dropout=args.dropout_rate,
                             relearn_embeddings=args.relearn_embeddings)
 
-    beam_size = len(tag_dictionary.item2idx)
+
     model = HybridSequenceTagger(tagger, lm, beam_size)
 
 
