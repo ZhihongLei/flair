@@ -603,8 +603,9 @@ class MySimpleLanguageModel(nn.Module):
     def forward(self, batch, lengths, reduce_loss=True, zero_grad=True):
         batch.to(device=flair.device)
         if zero_grad: self.zero_grad()
-        inputs = batch[range(batch.shape[0]), :-1].to(device=flair.device)
-        targets = batch[range(batch.shape[0]), 1:].to(device=flair.device)
+        batch.transpose_(0, 1)
+        inputs = batch[:-1].transpose_(0, 1)
+        targets = batch[1:].transpose_(0, 1)
 
         sentence_tensor = self.encoder(inputs)
         sentence_tensor = sentence_tensor.transpose_(0, 1)
