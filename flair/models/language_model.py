@@ -568,8 +568,7 @@ class MySimpleLanguageModel(nn.Module):
         super(MySimpleLanguageModel, self).__init__()
 
         self.tag_type = tag_type
-        self.\
-            dropout = dropout
+        self.dropout = dropout
         self.hidden_size = hidden_size
         self.embedding_size = embedding_size
         self.nlayers = nlayers
@@ -602,6 +601,7 @@ class MySimpleLanguageModel(nn.Module):
 
 
     def forward(self, batch, lengths, reduce_loss=True, zero_grad=True):
+        batch.to(device=flair.device)
         if zero_grad: self.zero_grad()
         inputs = batch[range(batch.shape[0]), :-1]
         targets = batch[range(batch.shape[0]), 1:]
@@ -627,6 +627,7 @@ class MySimpleLanguageModel(nn.Module):
 
 
     def forward_step(self, slice, hx):
+        slice.to(device=flair.device)
         slice_tensor = self.encoder(slice)
         slice_tensor = slice_tensor.transpose_(0, 1)
         rnn_output, hx = self.rnn(slice_tensor, hx)
