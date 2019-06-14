@@ -601,7 +601,7 @@ class MySimpleLanguageModel(nn.Module):
 
 
     def forward(self, batch, lengths, reduce_loss=True, zero_grad=True):
-        batch.to(device=flair.device)
+        batch = batch.to(device=flair.device)
         if zero_grad: self.zero_grad()
         batch.transpose_(0, 1)
         inputs = batch[:-1].transpose_(0, 1)
@@ -628,7 +628,7 @@ class MySimpleLanguageModel(nn.Module):
 
 
     def forward_step(self, slice, hx):
-        slice.to(device=flair.device)
+        slice = slice.to(device=flair.device)
         slice_tensor = self.encoder(slice)
         slice_tensor = slice_tensor.transpose_(0, 1)
         rnn_output, hx = self.rnn(slice_tensor, hx)
