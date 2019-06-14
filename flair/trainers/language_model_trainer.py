@@ -559,7 +559,7 @@ class MyLMTrainer:
                     train_loss += (loss.item() * num_words.item())
                     total_num_words += num_words.item()
 
-                    clear_embeddings(batch, also_clear_word_embeddings=True)
+                    clear_embeddings(batch, also_clear_word_embeddings=not embeddings_in_memory)
 
                     if batch_no % modulo == 0:
                         log.info(f'epoch {epoch + 1} - iter {batch_no}/{len(batches)} - loss '

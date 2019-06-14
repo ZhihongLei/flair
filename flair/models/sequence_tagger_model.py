@@ -417,8 +417,8 @@ class SequenceTagger(flair.nn.Model):
 
 
 
-    def forward(self, sentences: List[Sentence], sort=True, layer=None):
-        self.zero_grad()
+    def forward(self, sentences: List[Sentence], sort=True, layer=None, zero_grad=True):
+        if zero_grad: self.zero_grad()
 
         self.embeddings.embed(sentences)
         for additional_tag_embedding in self.additional_tag_embeddings:
@@ -546,11 +546,11 @@ class SequenceTagger(flair.nn.Model):
         for i in range(feats.shape[0]):
             r = torch.LongTensor(range(lens_[i])).to(flair.device)
 
-            score[i] = \
-                torch.sum(
-                    self.transitions[pad_stop_tags[i, :lens_[i] + 1], pad_start_tags[i, :lens_[i] + 1]]
-                ) + \
-                torch.sum(feats[i, r, tags[i, :lens_[i]]])
+            if self.use_crf:
+                score[i] = torch.sum(self.transitions[pad_stop_tags[i, :lens_[i] + 1], pad_start_tags[i, :lens_[i] + 1]]) + \
+                       torch.sum(feats[i, r, tags[i, :lens_[i]]])
+            else:
+                score[i] = torch.sum(feats[i, r, tags[i, :lens_[i]]])
 
         return score
 
@@ -907,7 +907,7 @@ def _validate_dict(tagger_dict, lm_dict):
 
 
 
-def beam_search_one_sentence(sentence, tagger_feature, length, beam_size, lm: MyLanguageModel, tagger: SequenceTagger, lm_weight, rescoring=False):
+def beam_search_one_sentence(sentence, tagger_feature, length, beam_size, lm: MyLanguageModel, tagger: SequenceTagger, lm_weight, rescoring=False, return_all_hyps=False):
     
     beam = Beam(beam_size, tagger.tag_dictionary)
     
@@ -965,8 +965,11 @@ def beam_search_one_sentence(sentence, tagger_feature, length, beam_size, lm: My
                     hx[1][0][i] = hidden[1][0][k]
                 else:
                     hx[0][i] = hidden[0][k]
-                
-        return beam.get_hyp(beam.get_best()[1]), beam.get_best()[0]
+        if return_all_hyps:
+            scores, ids = beam.sort_best()
+            hyps = [beam.get_hyp(i) for i in ids]
+            return hyps, scores
+        else: return beam.get_hyp(beam.get_best()[1]), beam.get_best()[0]
     
     else:
         for i in range(length):
@@ -1012,9 +1015,11 @@ def beam_search_one_sentence(sentence, tagger_feature, length, beam_size, lm: My
         lm_score = -lm_losses.sum(dim=1)
         
         scores = tagger_score + lm_score * lm_weight
-        scores, idxs = torch.sort(scores, 0 , True)
-        
-        return beam.get_hyp(idxs[0]), scores[0]
+        scores, ids = torch.sort(scores, 0 , True)
+        if return_all_hyps:
+            hyps = [beam.get_hyp(i) for i in ids]
+            return hyps, scores
+        else: return beam.get_hyp(ids[0]), scores[0]
         
 
 
@@ -1098,3 +1103,179 @@ def evalute_beam_search(tagger,
 
         return metric, eval_loss   
         
+
+
+import copy
+
+class HybridSequenceTagger(flair.nn.Model):
+    def __init__(self, tagger: SequenceTagger, lm: MyLanguageModel, beam_size):
+        super(HybridSequenceTagger, self).__init__()
+        self.tagger = tagger
+        self.lm = lm
+        self.beam_size = beam_size
+
+        self.tag_type = tagger.tag_type
+        self.to(device=flair.device)
+
+
+    def forward_loss(self, sentences: Union[List[Sentence], Sentence], sort=True):
+        if sort: sentences.sort(key=lambda x: len(x), reverse=True)
+        scores = self.score_sentences(sentences)
+        return -scores.sum()
+
+    def forward_labels_and_loss(self, sentences: Union[List[Sentence], Sentence],
+                                sort=True):
+        if sort: sentences.sort(key=lambda x: len(x), reverse=True)
+        with torch.no_grad():
+            loss = self.forward_loss(sentences, sort=False)
+            tags = self.predict(sentences)
+            return tags, loss
+
+    def forward(self, sentences, sort=True):
+        pass
+
+
+    def predict(self, sentences: Union[List[Sentence], Sentence], mini_batch_size=32):
+        with torch.no_grad():
+            return beam_search(sentences, self.tagger, self.lm, self.beam_size, 1.0)
+
+
+    def score_sentences(self, sentences):
+        tagger_features, lengths, gold_tags = self.tagger.forward(sentences, sort=False)
+        gold_tags, _ = pad_tensors(gold_tags)
+        tagger_gold_scores = self.tagger._score_sentence(tagger_features, gold_tags, lengths)
+
+        sentences_copy = [copy.copy(s) for s in sentences]
+        clear_embeddings(sentences_copy, True)
+        for sentence in sentences_copy:
+            start_token = Token('<START>')
+            end_token = Token('<STOP>')
+            for tag in sentence[0].tags.keys():
+                start_token.add_tag(tag, '<START>')
+                end_token.add_tag(tag, '<STOP>')
+            start_token.idx = -1
+            start_token.sentence = sentence
+            sentence.tokens.insert(0, start_token)
+
+        lm_gold_losses, num_words = self.lm.forward(sentences_copy, sort=False, reduce_loss=False)
+        lm_gold_scores = -lm_gold_losses.sum(dim=1)
+        gold_scores = tagger_gold_scores + lm_gold_scores
+
+        error_scores = torch.zeros_like(gold_scores)
+        for i, sentence, tagger_feature, length in zip(range(len(sentences)), sentences, tagger_features, lengths):
+            beam_sentences = []
+            with torch.no_grad():
+                hyps, scores = beam_search_one_sentence(sentence, tagger_feature, length, self.beam_size, self.lm, self.tagger, 1.0, return_all_hyps=True)
+                for hyp in hyps:
+                    beam_sentence = copy.copy(sentence)
+                    for x, token in zip(hyp, beam_sentence.tokens):
+                        token.add_tag(self.tagger.tag_type, self.tagger.tag_dictionary.get_item_for_index(x.item()))
+                    beam_sentences.append(beam_sentence)
+
+            tagger_beam_features, beam_lengths, beam_tags = self.tagger.forward(beam_sentences, sort=False, zero_grad=False)
+            beam_tags, _ = pad_tensors(beam_tags)
+            tagger_beam_scores = self.tagger._score_sentence(tagger_beam_features, beam_tags, beam_lengths)
+
+            sentences_copy = [copy.copy(s) for s in beam_sentences]
+            clear_embeddings(sentences_copy, True)
+            for s in sentences_copy:
+                start_token = Token('<START>')
+                end_token = Token('<STOP>')
+                for tag in sentence[0].tags.keys():
+                    start_token.add_tag(tag, '<START>')
+                    end_token.add_tag(tag, '<STOP>')
+                start_token.idx = -1
+                start_token.sentence = sentence
+                s.tokens.insert(0, start_token)
+
+            lm_beam_losses, beam_num_words = self.lm.forward(sentences_copy, sort=False, reduce_loss=False, zero_grad=False)
+            lm_beam_scores = -lm_beam_losses.sum(dim=1)
+            beam_scores = tagger_beam_scores + lm_beam_scores
+            error_scores[i] = torch.logsumexp(beam_scores, dim=0)
+
+        scores = gold_scores - error_scores
+        return scores
+
+
+    @staticmethod
+    def save_torch_model(model_state: dict, model_file: str, pickle_module: str = 'pickle', pickle_protocol: int = 4):
+        if pickle_module == 'dill':
+            try:
+                import dill
+                torch.save(model_state, str(model_file), pickle_module=dill)
+            except:
+                log.warning('-' * 100)
+                log.warning('ATTENTION! The library "dill" is not installed!')
+                log.warning('Please first install "dill" with "pip install dill" to save the model!')
+                log.warning('-' * 100)
+                pass
+        else:
+            torch.save(model_state, str(model_file), pickle_protocol=pickle_protocol)
+
+    def save(self, model_file: Union[str, Path]):
+        model_state = {
+            'state_dict': self.state_dict(),
+            'lm': self.lm,
+            'tagger': self.tagger,
+            'beam_size': self.beam_size
+        }
+        self.save_torch_model(model_state, str(model_file))
+
+    def save_checkpoint(self, model_file: Union[str, Path], optimizer_state: dict, scheduler_state: dict, epoch: int,
+                        loss: float):
+        model_state = {
+            'state_dict': self.state_dict(),
+            'lm': self.lm,
+            'tagger': self.tagger,
+            'beam_size': self.beam_size,
+            'optimizer_state_dict': optimizer_state,
+            'scheduler_state_dict': scheduler_state,
+            'epoch': epoch,
+            'loss': loss
+        }
+        self.save_torch_model(model_state, str(model_file))
+
+    @classmethod
+    def load_from_file(cls, model_file: Union[str, Path]):
+        state = cls._load_state(model_file)
+        model = cls(state['tagger'],
+                    state['lm'],
+                    state['beam_size'])
+        model.load_state_dict(state['state_dict'])
+        model.eval()
+        model.to(flair.device)
+        return model
+
+    @classmethod
+    def load_checkpoint(cls, model_file: Union[str, Path]):
+        state = cls._load_state(model_file)
+        model = cls.load_from_file(model_file)
+
+        epoch = state['epoch'] if 'epoch' in state else None
+        loss = state['loss'] if 'loss' in state else None
+        optimizer_state_dict = state['optimizer_state_dict'] if 'optimizer_state_dict' in state else None
+        scheduler_state_dict = state['scheduler_state_dict'] if 'scheduler_state_dict' in state else None
+
+        return {
+            'model': model, 'epoch': epoch, 'loss': loss,
+            'optimizer_state_dict': optimizer_state_dict, 'scheduler_state_dict': scheduler_state_dict
+        }
+
+    @classmethod
+    def _load_state(cls, model_file: Union[str, Path]):
+        # ATTENTION: suppressing torch serialization warnings. This needs to be taken out once we sort out recursive
+        # serialization of torch objects
+        # https://docs.python.org/3/library/warnings.html#temporarily-suppressing-warnings
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore")
+            # load_big_file is a workaround by https://github.com/highway11git to load models on some Mac/Windows setups
+            # see https://github.com/zalandoresearch/flair/issues/351
+            f = flair.file_utils.load_big_file(str(model_file))
+            state = torch.load(f, map_location=flair.device)
+            return state
+
+
+
+
+
+

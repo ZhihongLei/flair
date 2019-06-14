@@ -10,9 +10,11 @@ import flair
 import flair.nn
 from flair.data import Sentence, Token, MultiCorpus, Corpus
 from flair.models import TextClassifier, SequenceTagger
+from flair.models.sequence_tagger_model import HybridSequenceTagger
 from flair.training_utils import Metric, init_output_file, WeightExtractor, clear_embeddings, EvaluationMetric, \
     log_line, add_file_handler
 from flair.optim import *
+import numpy as np
 
 
 log = logging.getLogger('flair')
@@ -273,6 +275,9 @@ class ModelTrainer:
                 self.model = TextClassifier.load_from_file(base_path / 'best-model.pt')
             if isinstance(self.model, SequenceTagger):
                 self.model = SequenceTagger.load_from_file(base_path / 'best-model.pt')
+            if isinstance(self.model, HybridSequenceTagger):
+                self.model = HybridSequenceTagger.load_from_file(base_path / 'best-model.pt')
+
 
         test_metric, test_loss = self.evaluate(self.model, self.corpus.test, eval_mini_batch_size=eval_mini_batch_size,
                                                embeddings_in_memory=embeddings_in_memory)
@@ -342,6 +347,9 @@ class ModelTrainer:
             return ModelTrainer._evaluate_text_classifier(model, data_set, eval_mini_batch_size, embeddings_in_memory,
                                                           out_path)
         elif isinstance(model, SequenceTagger):
+            return ModelTrainer._evaluate_sequence_tagger(model, data_set, eval_mini_batch_size, embeddings_in_memory,
+                                                          out_path)
+        elif isinstance(model, HybridSequenceTagger):
             return ModelTrainer._evaluate_sequence_tagger(model, data_set, eval_mini_batch_size, embeddings_in_memory,
                                                           out_path)
 
@@ -484,6 +492,11 @@ class ModelTrainer:
 
         if model_type == 'TextClassifier':
             checkpoint = TextClassifier.load_checkpoint(checkpoint_file)
+            return ModelTrainer(checkpoint['model'], corpus, optimizer, epoch=checkpoint['epoch'],
+                                loss=checkpoint['loss'], optimizer_state=checkpoint['optimizer_state_dict'],
+                                scheduler_state=checkpoint['scheduler_state_dict'])
+        if model_type == 'HybridSequenceTagger':
+            checkpoint = HybridSequenceTagger.load_checkpoint(checkpoint_file)
             return ModelTrainer(checkpoint['model'], corpus, optimizer, epoch=checkpoint['epoch'],
                                 loss=checkpoint['loss'], optimizer_state=checkpoint['optimizer_state_dict'],
                                 scheduler_state=checkpoint['scheduler_state_dict'])

@@ -336,7 +336,7 @@ class MyLanguageModel(nn.Module):
                  dictionary,
                  hidden_size: int,
                  nlayers: int,
-                 dropout=0.1,
+                 dropout=0.,
                  additional_embeddings = [],
                  additional_dictionaries = []):
 
@@ -346,6 +346,7 @@ class MyLanguageModel(nn.Module):
         self.embedding_size = embeddings.embedding_length
         for additional_embedding in additional_embeddings:
             self.embedding_size += additional_embedding.embedding_length
+        print('lm embedding_size:', self.embedding_size)
         
         if nlayers == 1:
             self.rnn = nn.LSTM(self.embedding_size, hidden_size, nlayers)
@@ -365,9 +366,6 @@ class MyLanguageModel(nn.Module):
         self.nlayers = nlayers
 
         self.drop = nn.Dropout(dropout)
-        
-        
-            
         
         self.linear = nn.Linear(hidden_size, len(dictionary))
 
@@ -423,8 +421,8 @@ class MyLanguageModel(nn.Module):
         return feature, hx
     
         
-    def forward(self, sentences: List[Sentence], sort=True, reduce_loss=True, layer=None):
-        self.zero_grad()
+    def forward(self, sentences: List[Sentence], sort=True, reduce_loss=True, zero_grad=True):
+        if zero_grad: self.zero_grad()
         if sort:
             sentences.sort(key=lambda x: len(x), reverse=True)
 

@@ -105,9 +105,11 @@ tag_type = args.tag_type
 
 print('Corpus has been read')
 # initialize embeddings
-embedding_types: List[TokenEmbeddings] = [WordEmbeddings(type) if type!='task-trained' \
+
+embedding_types: List[TokenEmbeddings] = [WordEmbeddings(t) if type!='task-trained' \
                                             else NonStaticWordEmbeddings(emb_sz, corpus.make_vocab_dictionary(min_freq=2)) \
-                                          for type in args.word_embeddings]
+                                          for t in args.word_embeddings]
+
 if args.char_embeddings:
      embedding_types.append(CharacterEmbeddings())
 if args.flair_embeddings:
@@ -119,8 +121,6 @@ if len(embedding_types) == 0:
     raise ValueError('Must specify at least one embedding type!')
 
 embeddings: StackedEmbeddings = StackedEmbeddings(embeddings=embedding_types)
-
-
 
 tag_dictionary = corpus.make_tag_dictionary(tag_type=tag_type)
 print(tag_dictionary.idx2item)

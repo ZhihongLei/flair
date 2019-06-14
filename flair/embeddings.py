@@ -7,7 +7,7 @@ from typing import List, Union, Dict
 
 import gensim
 import numpy as np
-import torch
+
 from bpemb import BPEmb
 from deprecated import deprecated
 
@@ -25,6 +25,7 @@ from .data import Dictionary, Token, Sentence
 from .file_utils import cached_path
 
 log = logging.getLogger('flair')
+import torch
 
 
 class Embeddings(torch.nn.Module):
@@ -275,7 +276,7 @@ class NonStaticWordEmbeddings(TokenEmbeddings):
         self.field = field
         self.window_size = window_size
         self.dictionary = dictionary
-        self.embeddings = torch.torch.nn.Embedding(self.num_words, embedding_length)
+        self.embeddings = torch.nn.Embedding(self.num_words, embedding_length)
         self.static_embeddings = False
         self.name = 'non-static-word' if self.field is None else 'tag-{}'.format(self.field)
         self.to(flair.device)
