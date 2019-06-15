@@ -11,6 +11,7 @@ from torch.optim.sgd import SGD
 import flair
 from flair.data import Dictionary, Corpus, Sentence
 from flair.models import LanguageModel
+from flair.models.language_model import MySimpleLanguageModel
 from flair.optim import *
 import numpy as np
 from flair.training_utils import WeightExtractor, clear_embeddings, \
@@ -640,9 +641,10 @@ class MyLMTrainer:
 
 
 
+
 class MySimpleLMTrainer:
     def __init__(self,
-                 model,
+                 model: MySimpleLanguageModel,
                  train_data,
                  dev_data,
                  test_data,
@@ -748,14 +750,7 @@ class MySimpleLMTrainer:
 
                 for batch_no, batch in enumerate(batches):
                     batch.sort(key=lambda x: len(x), reverse=True)
-                    batch_size, max_seq_len = len(batch), len(batch[0])
-                    lengths = [len(s) - 1 for s in batch]
-                    batch_data = torch.LongTensor(batch_size, max_seq_len).fill_(0)
-                    for i in range(batch_size):
-                        batch_data[i][:lengths[i]+1] = torch.LongTensor(batch[i])
-
-
-
+                    batch_data, lengths = self.model.get_word_indices_tensor(batch)
                     loss, num_words = self.model.forward(batch_data, lengths)
 
                     optimizer.zero_grad()
@@ -835,11 +830,7 @@ class MySimpleLMTrainer:
 
             for batch in batches:
                 batch.sort(key=lambda x: len(x), reverse=True)
-                batch_size, max_seq_len = len(batch), len(batch[0])
-                batch_data = torch.LongTensor(batch_size, max_seq_len).fill_(0)
-                lengths = [len(s) - 1 for s in batch]
-                for i in range(batch_size):
-                    batch_data[i][:lengths[i] + 1] = torch.LongTensor(batch[i])
+                batch_data, lengths = model.get_word_indices_tensor(batch)
                 loss, num_words = model.forward(batch_data, lengths)
                 eval_loss += (loss.item() * num_words.item())
                 total_num_words += num_words.item()

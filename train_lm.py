@@ -104,7 +104,7 @@ else:
 
     num_hidden_layers = args.num_hidden_layers
     hidden_size = args.hidden_size
-    dropout_rate = args.dropout_rate
+    dropout_rate = args.dropout
     
     model = MyLanguageModel(tag_type=tag_type, 
                         embeddings=embeddings, 

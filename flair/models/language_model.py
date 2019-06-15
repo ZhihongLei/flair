@@ -601,8 +601,8 @@ class MySimpleLanguageModel(nn.Module):
 
 
     def forward(self, batch, lengths, reduce_loss=True, zero_grad=True):
-        batch = batch.to(device=flair.device)
         if zero_grad: self.zero_grad()
+        batch = batch.to(device=flair.device)
         batch.transpose_(0, 1)
         inputs = batch[:-1].transpose_(0, 1)
         targets = batch[1:].transpose_(0, 1)
@@ -640,6 +640,19 @@ class MySimpleLanguageModel(nn.Module):
         weight = next(self.parameters()).detach()
         return (weight.new(self.nlayers, bsz, self.hidden_size).zero_().clone().detach(),
                 weight.new(self.nlayers, bsz, self.hidden_size).zero_().clone().detach())
+
+
+    def get_word_indices(self, sentences):
+        return [[self.dictionary.get_idx_for_item('<START>')] + [self.dictionary.get_idx_for_item(token.get_tag(self.tag_type).value) for token in sentence.tokens] for sentence in sentences]
+
+
+    def get_word_indices_tensor(self, word_indices):
+        batch_size, max_seq_len = len(word_indices), max([len(x) for x in word_indices])
+        lengths = [len(s) - 1 for s in word_indices]
+        batch_data = torch.LongTensor(batch_size, max_seq_len, device=flair.device).fill_(self.dictionary.get_idx_for_item('<pad>'))
+        for i in range(batch_size):
+            batch_data[i][:lengths[i] + 1] = torch.LongTensor(word_indices[i], device=flair.device)
+        return batch_data, lengths
 
 
     @staticmethod

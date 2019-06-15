@@ -80,9 +80,7 @@ log.info('{} hidden layers of size {}'.format(num_hidden_layers, hidden_size))
 log.info('Dropout rate: {}'.format(dropout_rate))
 
 
-train_data, dev_data, test_data = [[([dictionary.get_idx_for_item('<START>')] + [dictionary.get_idx_for_item(token.get_tag(tag_type).value)
-                                        for token in sentence.tokens]) for sentence in data]
-                                   for data in [corpus.train, corpus.dev, corpus.test]]
+train_data, dev_data, test_data = [model.get_word_indices(data) for data in [corpus.train, corpus.dev, corpus.test]]
 
 lr = args.lr
 working_dir = args.working_dir

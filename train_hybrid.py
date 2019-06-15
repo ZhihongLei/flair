@@ -11,7 +11,7 @@ from flair.embeddings import TokenEmbeddings, WordEmbeddings, StackedEmbeddings,
 from flair.training_utils import EvaluationMetric
 from flair.visual.training_curves import Plotter
 from flair.models.sequence_tagger_model import HybridSequenceTagger
-from flair.models.language_model import MyLanguageModel
+from flair.models.language_model import MyLanguageModel, MySimpleLanguageModel
 from flair.models import SequenceTagger
 from flair.trainers import ModelTrainer
 
@@ -133,8 +133,8 @@ else:
     print('Using CRF: {}'.format(not args.no_crf))
     print(f'Beam size: {beam_size}')
 
-    lm = MyLanguageModel(tag_type=tag_type,
-                        embeddings=NonStaticWordEmbeddings(10, tag_dictionary, tag_type),
+    lm = MySimpleLanguageModel(tag_type=tag_type,
+                        embedding_size=10,
                         dictionary=tag_dictionary,
                         hidden_size=50,
                         nlayers=1)
