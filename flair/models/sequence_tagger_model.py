@@ -916,7 +916,7 @@ def beam_search_one_sentence(tagger_feature, length, beam_size, lm: MySimpleLang
     hx = lm.init_state(beam_size)
     for i in range(length):
         emission_score = tagger_feature[i]
-        feature, hidden = lm.forward_step(beam.get_current_state().view(beam_size, -1), hx)
+        feature, hidden = lm.forward_step(beam.get_current_state().view((beam_size, -1)), hx)
 
         lm_score = feature.view(beam_size, -1)
         lm_score = torch.nn.functional.log_softmax(lm_score, dim=1)
@@ -925,7 +925,7 @@ def beam_search_one_sentence(tagger_feature, length, beam_size, lm: MySimpleLang
             transition_score = torch.zeros(beam_size, tagger.tagset_size, device=flair.device)
             prev_tags = beam.get_current_state()
             for j, prev in enumerate(prev_tags):
-                transition_score[j] = tagger.transitions.transpose(0, 1)[prev].clone()
+                transition_score[j] = tagger.transitions.transpose(0, 1)[prev]
 
             score = emission_score + transition_score + lm_score * lm_weight
         else:
@@ -963,7 +963,7 @@ def beam_search(sentences: List[Sentence], tagger: SequenceTagger, lm: MySimpleL
     for sentence, tagger_feature, length in zip(sentences, tagger_features, lengths):
         hyp, score = beam_search_one_sentence(tagger_feature, length, beam_size, lm, tagger, lm_weight, apply_log=apply_log)
         tags.append([Label(tagger.tag_dictionary.get_item_for_index(x.item()))for x in hyp])
-    return tags     
+    return tags
 
 
 def evalute_beam_search(tagger,
@@ -1033,14 +1033,13 @@ def evalute_beam_search(tagger,
         
 
 
-import copy
-
 class HybridSequenceTagger(flair.nn.Model):
     def __init__(self, tagger: SequenceTagger, lm: MySimpleLanguageModel, beam_size):
         super(HybridSequenceTagger, self).__init__()
         self.tagger = tagger
         self.lm = lm
         self.beam_size = beam_size
+        self.lm_weight = 0.4
 
         self.tag_type = tagger.tag_type
         self.to(device=flair.device)
@@ -1048,91 +1047,55 @@ class HybridSequenceTagger(flair.nn.Model):
 
     def forward_loss(self, sentences: Union[List[Sentence], Sentence], sort=True):
         if sort: sentences.sort(key=lambda x: len(x), reverse=True)
-        scores = self.score_sentences(sentences)
+        scores = self.forward(sentences, sort=False)
         return -scores.sum()
 
     def forward_labels_and_loss(self, sentences: Union[List[Sentence], Sentence],
                                 sort=True):
         if sort: sentences.sort(key=lambda x: len(x), reverse=True)
         with torch.no_grad():
-            loss = self.forward_loss(sentences, sort=False)
-            tags = self.predict(sentences)
+            scores, tags = self.forward(sentences, sort=False, prediction=True)
+            loss = -scores.sum()
             return tags, loss
 
-    def forward(self, sentences, sort=True):
-        pass
+    def forward(self, sentences, sort=True, zero_grad=True, prediction=False):
+        if sort: sentences.sort(key=lambda x: len(x), reverse=True)
+        if zero_grad: self.zero_grad()
 
-
-    def predict(self, sentences: Union[List[Sentence], Sentence], mini_batch_size=32):
-        with torch.no_grad():
-            return beam_search(sentences, self.tagger, self.lm, self.beam_size, 1.0, apply_log=False)
-
-
-    def insert_start_token(self, sentences):
-        sentences_copy = [copy.copy(s) for s in sentences]
-        clear_embeddings(sentences_copy, True)
-        for sentence in sentences_copy:
-            start_token = Token('<START>')
-            for tag in sentence[0].tags.keys():
-                start_token.add_tag(tag, '<START>')
-            start_token.idx = -1
-            start_token.sentence = sentence
-            sentence.tokens.insert(0, start_token)
-        return sentences_copy
-
-
-
-    def score_sentences(self, sentences):
-        # sentences are already sorted
         tagger_features, lengths, gold_tags = self.tagger.forward(sentences, sort=False)
+
         gold_tags, _ = pad_tensors(gold_tags, self.lm.dictionary.get_idx_for_item('<pad>'))
         tagger_gold_scores = self.tagger._score_sentence(tagger_features, gold_tags, lengths)
+
         word_indices = self.lm.get_word_indices(sentences)
         batch_data, lengths = self.lm.get_word_indices_tensor(word_indices)
         lm_gold_losses, num_words = self.lm.forward(batch_data, lengths, reduce_loss=False)
         lm_gold_scores = -lm_gold_losses.sum(dim=1)
-        gold_scores = tagger_gold_scores + lm_gold_scores
+
+        gold_scores = tagger_gold_scores + lm_gold_scores * self.lm_weight
 
         batch_size = len(sentences)
-        beam_lengths = []
-        tag_indices_tensor = torch.LongTensor(batch_size * self.beam_size, lengths[0], device=flair.device).fill_(self.lm.dictionary.get_idx_for_item('<pad>'))
-        beam_tagger_features = torch.zeros(batch_size * self.beam_size, tagger_features.shape[1], tagger_features.shape[2], device=flair.device)
-
         beam_scores = torch.zeros(batch_size, self.beam_size, device=flair.device)
+        tags = []
         for i, sentence, tagger_feature, length in zip(range(batch_size), sentences, tagger_features, lengths):
-            # with torch.no_grad():
-            hyps, scores = beam_search_one_sentence(tagger_feature, length, self.beam_size, self.lm, self.tagger, 1.0, return_all_hyps=True, apply_log=False)
-            beam_scores[i] = scores.clone()
-            # for hyp in hyps:
-            #     beam_sentence = copy.copy(sentence)
-            #     for x, token in zip(hyp, beam_sentence.tokens):
-            #         token.add_tag(self.tagger.tag_type, self.tagger.tag_dictionary.get_item_for_index(x.item()))
-            #     beam_sentences.append(beam_sentence)
+            hyps, scores = beam_search_one_sentence(tagger_feature, length, self.beam_size, self.lm, self.tagger, self.lm_weight,
+                                                    return_all_hyps=True, apply_log=False)
+            beam_scores[i] = scores
+            if prediction:
+                tags.append([Label(self.tagger.tag_dictionary.get_item_for_index(x.item())) for x in hyps[0]])
 
-        #     for j in range(self.beam_size):
-        #         beam_tagger_features[i*self.beam_size + j] = tagger_features[i]
-        #     #beam_tagger_features[range(i * self.beam_size, (i+1) * self.beam_size)] = tagger_features[i].repeat(self.beam_size, 1, 1)
-        #     tag_indices_tensor[range(i * self.beam_size, (i+1) * self.beam_size), :length] = torch.LongTensor([hyp for hyp in hyps])
-        #     beam_lengths.extend([length] * self.beam_size)
-        #
-        #
-        # #beam_tagger_features, beam_lengths, beam_tags = self.tagger.forward(beam_sentences, sort=False, zero_grad=False)
-        # #tag_indices_tensor, _ = pad_tensors(beam_tags, self.lm.dictionary.get_idx_for_item('<pad>'))
-        # tagger_beam_scores = self.tagger._score_sentence(beam_tagger_features, tag_indices_tensor, beam_lengths)
-        # batch_data = torch.LongTensor(batch_size * self.beam_size, lengths[0]+1, device=flair.device).fill_(self.lm.dictionary.get_idx_for_item(START_TAG))
-        # batch_data[:, 1:] = tag_indices_tensor
-        # batch_data = batch_data.detach()
-        # lm_beam_losses, beam_num_words = self.lm.forward(batch_data, beam_lengths, reduce_loss=False, zero_grad=False)
-        # lm_beam_scores = -lm_beam_losses.sum(dim=1)
-        #
-        # tagger_beam_scores = tagger_beam_scores.reshape(self.beam_size, -1).transpose(0, 1)
-        # lm_beam_scores = lm_beam_scores.reshape(self.beam_size, -1).transpose(0, 1)
-        #
-        # beam_scores = tagger_beam_scores + lm_beam_scores
         error_scores = torch.logsumexp(beam_scores, dim=1)
 
         scores = gold_scores - error_scores
-        return scores
+        if prediction:
+            return scores, tags
+        else: return scores
+
+
+    def predict(self, sentences: Union[List[Sentence], Sentence], mini_batch_size=32):
+        with torch.no_grad():
+            return beam_search(sentences, self.tagger, self.lm, self.beam_size, self.lm_weight, apply_log=False)
+
 
 
     @staticmethod
@@ -1215,5 +1178,54 @@ class HybridSequenceTagger(flair.nn.Model):
 
 
 
+    def score_sentences(self, sentences):
+        # sentences are already sorted
+        tagger_features, lengths, gold_tags = self.tagger.forward(sentences, sort=False)
+        gold_tags, _ = pad_tensors(gold_tags, self.lm.dictionary.get_idx_for_item('<pad>'))
+        tagger_gold_scores = self.tagger._score_sentence(tagger_features, gold_tags, lengths)
+        word_indices = self.lm.get_word_indices(sentences)
+        batch_data, lengths = self.lm.get_word_indices_tensor(word_indices)
+        lm_gold_losses, num_words = self.lm.forward(batch_data, lengths, reduce_loss=False)
+        lm_gold_scores = -lm_gold_losses.sum(dim=1)
+        gold_scores = tagger_gold_scores + lm_gold_scores
 
+        batch_size = len(sentences)
+        beam_lengths = []
+        tag_indices_tensor = torch.LongTensor(batch_size * self.beam_size, lengths[0], device=flair.device).fill_(self.lm.dictionary.get_idx_for_item('<pad>'))
+        beam_tagger_features = torch.zeros(batch_size * self.beam_size, tagger_features.shape[1], tagger_features.shape[2], device=flair.device)
 
+        beam_scores = torch.zeros(batch_size, self.beam_size, device=flair.device)
+        for i, sentence, tagger_feature, length in zip(range(batch_size), sentences, tagger_features, lengths):
+            # with torch.no_grad():
+            hyps, scores = beam_search_one_sentence(tagger_feature, length, self.beam_size, self.lm, self.tagger, 1.0, return_all_hyps=True, apply_log=False)
+            beam_scores[i] = scores
+            # for hyp in hyps:
+            #     beam_sentence = copy.copy(sentence)
+            #     for x, token in zip(hyp, beam_sentence.tokens):
+            #         token.add_tag(self.tagger.tag_type, self.tagger.tag_dictionary.get_item_for_index(x.item()))
+            #     beam_sentences.append(beam_sentence)
+
+        #     for j in range(self.beam_size):
+        #         beam_tagger_features[i*self.beam_size + j] = tagger_features[i]
+        #     #beam_tagger_features[range(i * self.beam_size, (i+1) * self.beam_size)] = tagger_features[i].repeat(self.beam_size, 1, 1)
+        #     tag_indices_tensor[range(i * self.beam_size, (i+1) * self.beam_size), :length] = torch.LongTensor([hyp for hyp in hyps])
+        #     beam_lengths.extend([length] * self.beam_size)
+        #
+        #
+        # #beam_tagger_features, beam_lengths, beam_tags = self.tagger.forward(beam_sentences, sort=False, zero_grad=False)
+        # #tag_indices_tensor, _ = pad_tensors(beam_tags, self.lm.dictionary.get_idx_for_item('<pad>'))
+        # tagger_beam_scores = self.tagger._score_sentence(beam_tagger_features, tag_indices_tensor, beam_lengths)
+        # batch_data = torch.LongTensor(batch_size * self.beam_size, lengths[0]+1, device=flair.device).fill_(self.lm.dictionary.get_idx_for_item(START_TAG))
+        # batch_data[:, 1:] = tag_indices_tensor
+        # batch_data = batch_data.detach()
+        # lm_beam_losses, beam_num_words = self.lm.forward(batch_data, beam_lengths, reduce_loss=False, zero_grad=False)
+        # lm_beam_scores = -lm_beam_losses.sum(dim=1)
+        #
+        # tagger_beam_scores = tagger_beam_scores.reshape(self.beam_size, -1).transpose(0, 1)
+        # lm_beam_scores = lm_beam_scores.reshape(self.beam_size, -1).transpose(0, 1)
+        #
+        # beam_scores = tagger_beam_scores + lm_beam_scores
+        error_scores = torch.logsumexp(beam_scores, dim=1)
+
+        scores = gold_scores - error_scores
+        return scores

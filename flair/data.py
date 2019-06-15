@@ -26,10 +26,11 @@ class Dictionary:
         self.idx2item: List[str] = []
 
         # in order to deal with unknown tokens, add <unk>
-        if add_unk:
-            self.add_item('<unk>')
         if add_pad:
             self.add_item('<pad>')
+        if add_unk:
+            self.add_item('<unk>')
+
 
     def add_item(self, item: str) -> int:
         """
@@ -684,10 +685,10 @@ class TaggedCorpus(Corpus):
         all_sentences.extend(self.test)
         return all_sentences
 
-    def make_tag_dictionary(self, tag_type: str) -> Dictionary:
+    def make_tag_dictionary(self, tag_type: str, add_pad=True) -> Dictionary:
 
         # Make the tag dictionary
-        tag_dictionary: Dictionary = Dictionary()
+        tag_dictionary: Dictionary = Dictionary(add_pad=add_pad)
         tag_dictionary.add_item('O')
         for sentence in self.get_all_sentences():
             for token in sentence.tokens:
