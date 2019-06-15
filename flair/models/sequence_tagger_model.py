@@ -58,7 +58,7 @@ def log_sum_exp_batch(vecs):
 def pad_tensors(tensor_list, idx=0):
     ml = max([x.shape[0] for x in tensor_list])
     shape = [len(tensor_list), ml] + list(tensor_list[0].shape[1:])
-    template = torch.LongTensor(*shape).fill_(idx).to(device=flair.device)
+    template = torch.zeros(*shape, device=flair.device, dtype=torch.long).fill_(idx)
     lens_ = [x.shape[0] for x in tensor_list]
     for i, tensor in enumerate(tensor_list):
         template[i, :lens_[i]] = tensor
@@ -844,7 +844,7 @@ class Beam(object):
 
         self.scores = torch.zeros(size, device=flair.device)
         self.prevKs = []
-        self.nextYs = [torch.ones(size, dtype=torch.long).fill_(self.pad)]
+        self.nextYs = [torch.ones(size, dtype=torch.long, device=flair.device).fill_(self.pad)]
         self.nextYs[0][0] = self.bos
 
     def get_current_state(self):
@@ -1191,7 +1191,7 @@ class HybridSequenceTagger(flair.nn.Model):
 
         batch_size = len(sentences)
         beam_lengths = []
-        tag_indices_tensor = torch.LongTensor(batch_size * self.beam_size, lengths[0], device=flair.device).fill_(self.lm.dictionary.get_idx_for_item('<pad>'))
+        tag_indices_tensor = torch.zeros(batch_size * self.beam_size, lengths[0], dtype=torch.long, device=flair.device).fill_(self.lm.dictionary.get_idx_for_item('<pad>'))
         beam_tagger_features = torch.zeros(batch_size * self.beam_size, tagger_features.shape[1], tagger_features.shape[2], device=flair.device)
 
         beam_scores = torch.zeros(batch_size, self.beam_size, device=flair.device)

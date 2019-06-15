@@ -649,9 +649,9 @@ class MySimpleLanguageModel(nn.Module):
     def get_word_indices_tensor(self, word_indices):
         batch_size, max_seq_len = len(word_indices), max([len(x) for x in word_indices])
         lengths = [len(s) - 1 for s in word_indices]
-        batch_data = torch.LongTensor(batch_size, max_seq_len).fill_(self.dictionary.get_idx_for_item('<pad>')).to(device=flair.device)
+        batch_data = torch.zeros(batch_size, max_seq_len, dtype=torch.long, device=flair.device).fill_(self.dictionary.get_idx_for_item('<pad>'))
         for i in range(batch_size):
-            batch_data[i][:lengths[i] + 1] = torch.LongTensor(word_indices[i], device=flair.device)
+            batch_data[i][:lengths[i] + 1] = torch.tensor(word_indices[i], dtype=torch.long, device=flair.device)
         return batch_data, lengths
 
 
