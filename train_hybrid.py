@@ -48,6 +48,7 @@ parser = argparse.ArgumentParser(description='Train Flair model')
 parser.add_argument('--task', type=def_task, required=True, help='Task and data path')
 parser.add_argument('--tag-type', required=True, help='Tag type to train')
 parser.add_argument('--beam-size', type=int, default=-1, help='Beam size')
+parser.add_argument('--lm-weight', type=float, default=1.0, help='Weight of language model score')
 parser.add_argument('--word-embeddings', nargs='*', help='Type(s) of word embeddings')
 parser.add_argument('--char-embeddings', action='store_true', help='Character embeddings trained on task corpus, Lample 2016')
 parser.add_argument('--flair-embeddings', nargs='*', help='Type(s) of Flair embeddings')
@@ -124,6 +125,7 @@ else:
         for d in additional_tag_dictionaries: print(d.idx2item)
 
     beam_size = len(tag_dictionary.item2idx) if args.beam_size == -1 else args.beam_size
+    lm_weight = args.lm_weight
 
     print('Using word embeddings: {}'.format(str(embedding_types)))
     print('Using additional tag embeddings: {}'.format(str(additional_tag_embeddings)))
@@ -132,6 +134,7 @@ else:
     print('Dropout rate: {}'.format(args.dropout_rate))
     print('Using CRF: {}'.format(not args.no_crf))
     print(f'Beam size: {beam_size}')
+    print(f'LM weight: {lm_weight}')
 
     lm = MySimpleLanguageModel(tag_type=tag_type,
                         embedding_size=10,
@@ -151,7 +154,7 @@ else:
                             relearn_embeddings=args.relearn_embeddings)
 
 
-    model = HybridSequenceTagger(tagger, lm, beam_size)
+    model = HybridSequenceTagger(tagger, lm, beam_size, lm_weight)
 
 
 if args.optimizer == 'sgd':

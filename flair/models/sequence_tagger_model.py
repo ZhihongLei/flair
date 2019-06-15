@@ -1034,12 +1034,12 @@ def evalute_beam_search(tagger,
 
 
 class HybridSequenceTagger(flair.nn.Model):
-    def __init__(self, tagger: SequenceTagger, lm: MySimpleLanguageModel, beam_size):
+    def __init__(self, tagger: SequenceTagger, lm: MySimpleLanguageModel, beam_size, lm_weight=1.0):
         super(HybridSequenceTagger, self).__init__()
         self.tagger = tagger
         self.lm = lm
         self.beam_size = beam_size
-        self.lm_weight = 0.4
+        self.lm_weight = lm_weight
 
         self.tag_type = tagger.tag_type
         self.to(device=flair.device)
