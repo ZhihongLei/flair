@@ -58,7 +58,7 @@ def log_sum_exp_batch(vecs):
 def pad_tensors(tensor_list, idx=0):
     ml = max([x.shape[0] for x in tensor_list])
     shape = [len(tensor_list), ml] + list(tensor_list[0].shape[1:])
-    template = torch.LongTensor(*shape, device=flair.device).fill_(idx)
+    template = torch.LongTensor(*shape).fill_(idx).to(device=flair.device)
     lens_ = [x.shape[0] for x in tensor_list]
     for i, tensor in enumerate(tensor_list):
         template[i, :lens_[i]] = tensor
