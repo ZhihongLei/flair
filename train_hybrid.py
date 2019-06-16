@@ -120,10 +120,8 @@ else:
             for d in additional_tag_dictionaries: print(d.idx2item)
 
         embedding_types: List[TokenEmbeddings] = [WordEmbeddings(t) if t != 'task-trained' \
-                                                      else NonStaticWordEmbeddings(100,
-                                                                                   corpus.make_vocab_dictionary(
-                                                                                       min_freq=2)) \
-                                                  for t in args.word_embeddings]
+                                                    else NonStaticWordEmbeddings(100, corpus.make_vocab_dictionary(min_freq=2)) \
+                                                    for t in args.word_embeddings]
 
         if args.char_embeddings:
             embedding_types.append(CharacterEmbeddings())
