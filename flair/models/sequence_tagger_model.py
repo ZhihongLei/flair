@@ -526,7 +526,7 @@ class SequenceTagger(flair.nn.Model):
                 
         raise ValueError('Layer must be chosen from embeddings, hidden and logits')
 
-    def _score_sentence(self, feats, tags, lens_):
+    def _score_sentence(self, feats, tags, lens_, seperate_scores=False):
 
         start = torch.LongTensor([self.tag_dictionary.get_idx_for_item(START_TAG)]).to(flair.device)
         start = start[None, :].repeat(tags.shape[0], 1)
@@ -542,12 +542,19 @@ class SequenceTagger(flair.nn.Model):
                 self.tag_dictionary.get_idx_for_item(STOP_TAG)
 
         if self.use_crf:
-            score = torch.FloatTensor(feats.shape[0]).to(flair.device)
+            emission_score = torch.FloatTensor(feats.shape[0]).to(flair.device)
+            transition_score = torch.FloatTensor(feats.shape[0]).to(flair.device)
 
             for i in range(feats.shape[0]):
                 r = torch.LongTensor(range(lens_[i])).to(flair.device)
-                score[i] = torch.sum(self.transitions[pad_stop_tags[i, :lens_[i] + 1], pad_start_tags[i, :lens_[i] + 1]]) + \
-                       torch.sum(feats[i, r, tags[i, :lens_[i]]])
+                emission_score[i] = torch.sum(feats[i, r, tags[i, :lens_[i]]])
+                transition_score[i] = torch.sum(self.transitions[pad_stop_tags[i, :lens_[i] + 1], pad_start_tags[i, :lens_[i] + 1]])
+
+            if seperate_scores:
+                return emission_score, transition_score
+            else:
+                return emission_score + transition_score
+
         else:
             score = torch.FloatTensor(feats.shape[0]).to(flair.device)
             for i in range(feats.shape[0]):
@@ -556,7 +563,7 @@ class SequenceTagger(flair.nn.Model):
 
             #score = torch.nn.functional.cross_entropy(torch.transpose(feats, 1, 2), tags, ignore_index=self.tag_dictionary.get_idx_for_item('<pad>'), reduction='none')
             #score = 0. - torch.sum(score, dim=1)
-        return score
+            return score
 
     def _calculate_loss(self, features, lengths, tags) -> float:
         if self.use_crf:
@@ -927,7 +934,7 @@ def beam_search_one_sentence(tagger_feature, length, beam_size, lm: MySimpleLang
             for j, prev in enumerate(prev_tags):
                 transition_score[j] = tagger.transitions.transpose(0, 1)[prev]
 
-            score = emission_score + transition_score + lm_score * lm_weight
+            score = emission_score + (1.-lm_weight) * transition_score + lm_score * lm_weight
         else:
             if apply_log:
                 emission_score = torch.nn.functional.log_softmax(emission_score, dim=-1)
@@ -1064,13 +1071,17 @@ class HybridSequenceTagger(flair.nn.Model):
 
         tagger_features, lengths, gold_tags = self.tagger.forward(sentences, sort=False)
 
-        gold_tags, _ = pad_tensors(gold_tags, self.lm.dictionary.get_idx_for_item('<pad>'))
-        tagger_gold_scores = self.tagger._score_sentence(tagger_features, gold_tags, lengths)
-
         word_indices = self.lm.get_word_indices(sentences)
         batch_data, lengths = self.lm.get_word_indices_tensor(word_indices)
         lm_gold_losses, num_words = self.lm.forward(batch_data, lengths, reduce_loss=False)
         lm_gold_scores = -lm_gold_losses.sum(dim=1)
+
+        gold_tags, _ = pad_tensors(gold_tags, self.lm.dictionary.get_idx_for_item('<pad>'))
+        if self.tagger.use_crf:
+            tagger_gold_emission_scores, tagger_gold_transition_scores = self.tagger._score_sentence(tagger_features, gold_tags, lengths, seperate_scores=True)
+            tagger_gold_scores = tagger_gold_emission_scores + (1.0 - self.lm_weight) * tagger_gold_transition_scores
+        else:
+            tagger_gold_scores = self.tagger._score_sentence(tagger_features, gold_tags, lengths)
 
         gold_scores = tagger_gold_scores + lm_gold_scores * self.lm_weight
 
