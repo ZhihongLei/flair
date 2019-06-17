@@ -24,23 +24,16 @@ working_dir = args.working_dir
 
 
 from torch.optim.sgd import SGD
-from flair.data_fetcher import NLPTaskDataFetcher, NLPTask
+from flair.data_fetcher import NLPTaskDataFetcher
 from flair.data import TaggedCorpus
 from flair.training_utils import EvaluationMetric
 from flair.trainers import ModelTrainer
 from flair.models import SequenceTagger
 
 
-task_name, path = args.task
-if task_name == 'conll03':
-    task = NLPTask.CONLL_03
-    embeddings_in_memory = True
-elif task_name == 'ontoner':
-    task = NLPTask.ONTONER
-    embeddings_in_memory = False
-else:
-    raise NotImplementedError('{} is not implemented yet'.format(task_name))
-print('Task {}'.format(task.value))
+task, path = args.task
+print('Task {}'.format(task))
+embeddings_in_memory = True if task == 'conll_03' else False
 corpus: TaggedCorpus = NLPTaskDataFetcher.load_corpus(task, path)
 
 
@@ -50,4 +43,4 @@ tagger: SequenceTagger = HybridSequenceTagger.load_from_file(os.path.join(workin
 
 
 trainer: ModelTrainer = ModelTrainer(tagger, corpus, SGD)
-trainer.final_test(Path(working_dir), True, EvaluationMetric.MICRO_F1_SCORE, 32)
+trainer.final_test(Path(working_dir), embeddings_in_memory, EvaluationMetric.MICRO_F1_SCORE, 32)
