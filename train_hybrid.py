@@ -53,6 +53,7 @@ parser.add_argument('--task', type=def_task, required=True, help='Task and data 
 parser.add_argument('--tag-type', required=True, help='Tag type to train')
 parser.add_argument('--beam-size', type=int, default=-1, help='Beam size')
 parser.add_argument('--lm-weight', type=float, default=1.0, help='Weight of language model score')
+parser.add_argument('--lm-score-type', choices=['log-softmax', 'logits'], default='log-softmax',  help='Type of LM score')
 parser.add_argument('--word-embeddings', nargs='*', help='Type(s) of word embeddings')
 parser.add_argument('--init-lm', help='Initial language model')
 parser.add_argument('--init-tagger', help='Initial tagger model')
@@ -182,8 +183,9 @@ else:
     lm_weight = args.lm_weight
 
     log.info(f'Beam size: {beam_size}')
+    log.info(f'Type of LM score: {args.lm_score_type}')
     log.info(f'LM weight: {lm_weight}')
-    model = HybridSequenceTagger(tagger, lm, beam_size, lm_weight)
+    model = HybridSequenceTagger(tagger, lm, beam_size, args.lm_score_type, lm_weight)
 
 
 if args.optimizer == 'sgd':

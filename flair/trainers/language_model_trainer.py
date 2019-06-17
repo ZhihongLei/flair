@@ -751,7 +751,7 @@ class MySimpleLMTrainer:
                 for batch_no, batch in enumerate(batches):
                     batch.sort(key=lambda x: len(x), reverse=True)
                     batch_data, lengths = self.model.get_word_indices_tensor(batch)
-                    loss, num_words = self.model.forward(batch_data, lengths)
+                    loss, num_words, _ = self.model.forward(batch_data, lengths)
 
                     optimizer.zero_grad()
                     loss.backward()
@@ -831,7 +831,7 @@ class MySimpleLMTrainer:
             for batch in batches:
                 batch.sort(key=lambda x: len(x), reverse=True)
                 batch_data, lengths = model.get_word_indices_tensor(batch)
-                loss, num_words = model.forward(batch_data, lengths)
+                loss, num_words, _ = model.forward(batch_data, lengths)
                 eval_loss += (loss.item() * num_words.item())
                 total_num_words += num_words.item()
 

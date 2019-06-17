@@ -621,10 +621,10 @@ class MySimpleLanguageModel(nn.Module):
 
         cross_entroy_loss = torch.nn.CrossEntropyLoss(ignore_index=self.dictionary.get_idx_for_item('<pad>'),
                                                       reduction='sum' if reduce_loss else 'none')
-        loss = cross_entroy_loss(features.transpose_(1, 2), targets)
+        loss = cross_entroy_loss(torch.transpose(features, 1, 2), targets)
         num_words = torch.tensor(np.sum(lengths))
 
-        return loss / num_words if reduce_loss else loss, num_words
+        return loss / num_words if reduce_loss else loss, num_words, features
 
 
     def forward_step(self, slice, hx):
