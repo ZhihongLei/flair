@@ -969,8 +969,9 @@ class BatchBeam(object):
         for j in range(self.batch_size):
             k = ks[j]
             for i in range(len(self.prevKs)-1, -1, -1):
-                hyps[j].insert(0, self.nextYs[i+1][j][k])
+                hyps[j].append(self.nextYs[i+1][j][k])
                 k = self.prevKs[i][j][k]
+            hyps[j] = hyps[j][::-1]
         return hyps
 
 
@@ -988,7 +989,7 @@ def _validate_dict(tagger_dict, lm_dict):
 
 
 
-def beam_search_one_sentence(tagger_feature, length, beam_size, lm: MySimpleLanguageModel, tagger: SequenceTagger, lm_weight, return_all_hyps=False, emission_score_type='log-softmax', lm_score_type='log-softmax'):
+def beam_search_one_sentence(tagger_feature, length, beam_size, lm: MySimpleLanguageModel, tagger: SequenceTagger, lm_weight, emission_score_type='log-softmax', lm_score_type='log-softmax'):
     beam = Beam(beam_size, tagger.tag_dictionary)
     hx = lm.init_state(beam_size)
     for i in range(length):
@@ -1003,33 +1004,24 @@ def beam_search_one_sentence(tagger_feature, length, beam_size, lm: MySimpleLang
             emission_score = torch.nn.functional.log_softmax(emission_score, dim=-1)
 
         if tagger.use_crf:
-            transition_score = torch.zeros(beam_size, tagger.tagset_size, device=flair.device)
-            prev_tags = beam.get_current_state()
-            for j, prev in enumerate(prev_tags):
-                transition_score[j] = tagger.transitions.transpose(0, 1)[prev]
-
+            transition_score = tagger.transitions.transpose(0, 1)[beam.get_current_state()]
             score = emission_score + (1.-lm_weight) * transition_score + lm_score * lm_weight
         else:
             score = emission_score + lm_score * lm_weight
 
-
         beam.advance(score)
-        for j, k in enumerate(beam.get_current_origin()):
-            if isinstance(hx, tuple):
-                cloned = (hx[0].clone(), hx[1].clone())
-                cloned[0][0][j] = hidden[0][0][k]
-                cloned[1][0][j] = hidden[1][0][k]
-                hx = cloned
-            else:
-                cloned = hx.clone()
-                cloned[0][j] = hidden[0][k]
-                hx = cloned
-    if return_all_hyps:
-        scores, ids = beam.sort_best()
-        hyps = [beam.get_hyp(i) for i in ids]
-        return hyps, scores
-    else:
-        return beam.get_hyp(beam.get_best()[1]), beam.get_best()[0]
+        if isinstance(hx, tuple):
+            cloned = (hx[0].clone(), hx[1].clone())
+            cloned[0][0, range(beam_size)] = hidden[0][0, beam.get_current_origin()]
+            cloned[1][0, range(beam_size)] = hidden[1][0, beam.get_current_origin()]
+        else:
+            cloned = hx.clone()
+            cloned[0, range(beam_size)] = hidden[0, beam.get_current_origin()]
+        hx = cloned
+
+    scores, ids = beam.sort_best()
+    hyp = beam.get_hyp(ids[0])
+    return hyp, scores
 
 
 def beam_search_batch(tagger_features, lengths, beam_size, lm, tagger, lm_weight, emission_score_type='log-softmax', lm_score_type='log-softmax'):
@@ -1052,7 +1044,7 @@ def beam_search_batch(tagger_features, lengths, beam_size, lm, tagger, lm_weight
             emission_scores = torch.nn.functional.log_softmax(emission_scores, dim=-1)
 
         if tagger.use_crf:
-            transition_scores = torch.cat([tagger.transitions.transpose(0, 1)[prev_tag].view(1, beam_size, -1) for prev_tag in beam.get_current_state()], dim=0)
+            transition_scores = torch.cat([tagger.transitions.transpose(0, 1)[prev_tag] for prev_tag in beam.get_current_state()], dim=0).view((batch_size, beam_size, -1))
             scores = emission_scores + (1.-lm_weight) * transition_scores + lm_scores * lm_weight   # (batch_size, beam_size, num_tags)
         else:
             scores = emission_scores + lm_scores * lm_weight
@@ -1060,9 +1052,10 @@ def beam_search_batch(tagger_features, lengths, beam_size, lm, tagger, lm_weight
         # scores : (batch_size, beam_size, num_tags)
         for j in range(batch_size):
             if i >= lengths[j]:
-                scores[j][:, :] = 0.
+                 scores[j, :, :] = 0.
 
         beam.advance(scores)
+
         if isinstance(hx, tuple):
             cloned = (hx[0].clone(), hx[1].clone())
             for j, prevks in enumerate(beam.get_current_origin()):
@@ -1076,6 +1069,62 @@ def beam_search_batch(tagger_features, lengths, beam_size, lm, tagger, lm_weight
 
     scores, ids = beam.sort_best()
     hyps = beam.get_hyp(ids[:, 0])
+    return hyps, scores
+
+
+def beam_search_batch_v2(tagger_features, lengths, beam_size, lm, tagger, lm_weight, emission_score_type='log-softmax', lm_score_type='log-softmax'):
+    batch_size = len(tagger_features)
+    beams = [Beam(beam_size, tagger.tag_dictionary) for _ in range(batch_size)]
+    cursor = batch_size - 1
+    hx = lm.init_state((cursor + 1) * beam_size)
+
+    max_length = max(lengths)
+    for i in range(max_length):
+        emission_scores = tagger_features[:cursor+1, i, :]
+        input_tensor = torch.cat([beam.get_current_state() for beam in beams[:cursor + 1]]).view(((cursor + 1) * beam_size, -1))
+        features, hiddens = lm.forward_step(input_tensor, hx)
+
+        lm_scores = features.view((cursor + 1), beam_size, -1)
+        if lm_score_type == 'log-softmax':
+            lm_scores = torch.nn.functional.log_softmax(lm_scores, dim=-1)
+
+        emission_scores = emission_scores.view(((cursor+1), 1, -1))
+        if emission_score_type == 'log-softmax':
+            emission_scores = torch.nn.functional.log_softmax(emission_scores, dim=-1)
+
+        if tagger.use_crf:
+            transition_scores = torch.cat([tagger.transitions.transpose(0, 1)[beam.get_current_state()] for beam in beams[:cursor+1]]).view((cursor+1, beam_size, -1))
+            scores = emission_scores + (1.-lm_weight) * transition_scores + lm_scores * lm_weight   # (batch_size, beam_size, num_tags)
+        else:
+            scores = emission_scores + lm_scores * lm_weight
+
+        for beam, score in zip(beams[:cursor+1], scores):
+            beam.advance(score)
+
+        if i == max_length - 1: break
+        while lengths[cursor] - 1 <= i:
+            cursor = cursor - 1
+
+        if isinstance(hx, tuple):
+            cloned = (hx[0][:, range((cursor+1)*beam_size), :].clone(), hx[1][:, range((cursor+1)*beam_size), :].clone())
+            for j, prevks in enumerate([beam.get_current_origin() for beam in beams[:cursor+1]]):
+                cloned[0][0, range(j * beam_size, (j+1) * beam_size)] = hiddens[0][0, j * beam_size + prevks]
+                cloned[1][0, range(j * beam_size, (j+1) * beam_size)] = hiddens[1][0, j * beam_size + prevks]
+        else:
+            cloned = hx[:, range((cursor+1)*beam_size), :].clone()
+            for j, prevks in enumerate([beam.get_current_origin() for beam in beams[:cursor+1]]):
+                cloned[0, range(j * beam_size, (j + 1) * beam_size)] = hiddens[0, j * beam_size + prevks]
+        hx = cloned
+
+    scores = []
+    hyps = []
+    for beam in beams:
+        score, ids = beam.sort_best()
+        hyp = beam.get_hyp(ids[0])
+        scores.append(score)
+        hyps.append(hyp)
+
+    scores = torch.cat(scores).view((batch_size, beam_size))
     return hyps, scores
 
 
@@ -1222,8 +1271,7 @@ class HybridSequenceTagger(flair.nn.Model):
 
         tags = []
 
-
-        hyps, beam_scores = beam_search_batch(tagger_features, lengths, self.beam_size, self.lm, self.tagger, self.lm_weight,
+        hyps, beam_scores = beam_search_batch_v2(tagger_features, lengths, self.beam_size, self.lm, self.tagger, self.lm_weight,
                                          self.emission_score_type, self.lm_score_type)
         if prediction:
             for i, hyp in enumerate(hyps):
@@ -1231,13 +1279,13 @@ class HybridSequenceTagger(flair.nn.Model):
 
         # beam_scores = torch.zeros(batch_size, self.beam_size, device=flair.device)
         # for i, sentence, tagger_feature, length in zip(range(batch_size), sentences, tagger_features, lengths):
-        #     hyps, scores = beam_search_one_sentence(tagger_feature, length, self.beam_size, self.lm, self.tagger,
+        #     hyp, scores = beam_search_one_sentence(tagger_feature, length, self.beam_size, self.lm, self.tagger,
         #                                             self.lm_weight,
-        #                                             return_all_hyps=True, emission_score_type=self.emission_score_type,
+        #                                             emission_score_type=self.emission_score_type,
         #                                             lm_score_type=self.lm_score_type)
         #     beam_scores[i] = scores
         #     if prediction:
-        #         tags.append([Label(self.tagger.tag_dictionary.get_item_for_index(x.item())) for x in hyps[0]])
+        #         tags.append([Label(self.tagger.tag_dictionary.get_item_for_index(x.item())) for x in hyp])
 
         error_scores = torch.logsumexp(beam_scores, dim=1)
 
