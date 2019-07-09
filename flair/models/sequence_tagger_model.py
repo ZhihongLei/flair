@@ -1080,7 +1080,7 @@ def beam_search_batch_v2(tagger_features, lengths, beam_size, lm, tagger, lm_wei
 
     max_length = max(lengths)
     for i in range(max_length):
-        emission_scores = tagger_features[:cursor+1, i, :]
+        emission_scores = tagger_features[:cursor+1, i, :].clone()
         input_tensor = torch.cat([beam.get_current_state() for beam in beams[:cursor + 1]]).view(((cursor + 1) * beam_size, -1))
         features, hiddens = lm.forward_step(input_tensor, hx)
 
@@ -1094,12 +1094,12 @@ def beam_search_batch_v2(tagger_features, lengths, beam_size, lm, tagger, lm_wei
 
         if tagger.use_crf:
             transition_scores = torch.cat([tagger.transitions.transpose(0, 1)[beam.get_current_state()] for beam in beams[:cursor+1]]).view((cursor+1, beam_size, -1))
-            scores = emission_scores + (1.-lm_weight) * transition_scores + lm_scores * lm_weight   # (batch_size, beam_size, num_tags)
+            scores = emission_scores + (1.-lm_weight) * transition_scores + lm_scores * lm_weight   # (cursor+1, beam_size, num_tags)
         else:
             scores = emission_scores + lm_scores * lm_weight
 
-        for beam, score in zip(beams[:cursor+1], scores):
-            beam.advance(score)
+        for i in range(cursor+1):
+            beams[i].advance(scores[i].clone())
 
         if i == max_length - 1: break
         while lengths[cursor] - 1 <= i:
