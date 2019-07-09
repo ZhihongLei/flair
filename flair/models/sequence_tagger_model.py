@@ -905,6 +905,76 @@ class Beam(object):
 
 
 
+class BatchBeam(object):
+    """Ordered beam of candidate outputs."""
+
+    def __init__(self, beam_size, batch_size, vocab):
+        """Initialize params."""
+        self.beam_size = beam_size
+        self.batch_size = batch_size
+        #self.pad = vocab.get_idx_for_item('<pad>')
+        self.pad = vocab.get_idx_for_item(START_TAG)
+        self.bos = vocab.get_idx_for_item(START_TAG)
+        self.eos = vocab.get_idx_for_item(STOP_TAG)
+
+        self.scores = torch.zeros(batch_size, beam_size, device=flair.device)
+        self.prevKs = []
+        self.nextYs = [torch.ones(batch_size, beam_size , dtype=torch.long, device=flair.device).fill_(self.pad)]
+        self.nextYs[0][range(batch_size), 0] = self.bos
+
+
+    def get_current_state(self):
+        """Get state of beam."""
+        return self.nextYs[-1]
+
+    def get_current_origin(self):
+        """Get the backpointer to the beam at this step."""
+        return self.prevKs[-1]
+
+
+    def advance(self, word_scores):
+        """Advance the beam.
+            word_scores: (batch_size, beam_size, num_words)
+        """
+
+        num_words = word_scores.size(-1)
+
+        if len(self.prevKs) > 0:
+            beam_scores = word_scores + self.scores.clone().unsqueeze(2).expand_as(word_scores)
+        else:
+            beam_scores = word_scores[:, 0, :]
+
+        flat_beam_scores = beam_scores.view((self.batch_size, -1))
+
+        bestScores, bestScoresId = flat_beam_scores.topk(self.beam_size)
+        self.scores = bestScores
+
+        prev_k = bestScoresId / num_words   #(batch_size, beam_size)
+        self.prevKs.append(prev_k)
+        self.nextYs.append(bestScoresId - prev_k * num_words)
+
+
+    def sort_best(self):
+        """Sort the beam."""
+        return torch.sort(self.scores, 1, True)
+
+    def get_best(self):
+        """Get the most likely candidate."""
+        scores, ids = self.sort_best()
+        return scores[:, 0], ids[:, 0]
+
+    def get_hyp(self, ks):
+        """Get hypotheses."""
+        hyps = [[] for _ in range(self.batch_size)]
+        for j in range(self.batch_size):
+            k = ks[j]
+            for i in range(len(self.prevKs)-1, -1, -1):
+                hyps[j].insert(0, self.nextYs[i+1][j][k])
+                k = self.prevKs[i][j][k]
+        return hyps
+
+
+
 def _validate_dict(tagger_dict, lm_dict):
     if len(tagger_dict) != len(lm_dict): 
         print(tagger_dict)
@@ -962,6 +1032,53 @@ def beam_search_one_sentence(tagger_feature, length, beam_size, lm: MySimpleLang
         return beam.get_hyp(beam.get_best()[1]), beam.get_best()[0]
 
 
+def beam_search_batch(tagger_features, lengths, beam_size, lm, tagger, lm_weight, emission_score_type='log-softmax', lm_score_type='log-softmax'):
+    batch_size = len(tagger_features)
+    beam = BatchBeam(beam_size, batch_size, tagger.tag_dictionary)
+    hx = lm.init_state(batch_size * beam_size)
+
+    max_length = max(lengths)
+    for i in range(max_length):
+        emission_scores = tagger_features[:, i, :]
+        features, hiddens = lm.forward_step(beam.get_current_state().view((batch_size * beam_size, -1)), hx)
+
+        lm_scores = features.view(batch_size, beam_size, -1)
+        if lm_score_type == 'log-softmax':
+            lm_scores = torch.nn.functional.log_softmax(lm_scores, dim=-1)
+
+        emission_scores = emission_scores.view((batch_size, 1, -1))
+        #emission_scores = emission_scores.repeat(1, beam_size, 1)
+        if emission_score_type == 'log-softmax':
+            emission_scores = torch.nn.functional.log_softmax(emission_scores, dim=-1)
+
+        if tagger.use_crf:
+            transition_scores = torch.cat([tagger.transitions.transpose(0, 1)[prev_tag].view(1, beam_size, -1) for prev_tag in beam.get_current_state()], dim=0)
+            scores = emission_scores + (1.-lm_weight) * transition_scores + lm_scores * lm_weight   # (batch_size, beam_size, num_tags)
+        else:
+            scores = emission_scores + lm_scores * lm_weight
+
+        # scores : (batch_size, beam_size, num_tags)
+        for j in range(batch_size):
+            if i >= lengths[j]:
+                scores[j][:, :] = 0.
+
+        beam.advance(scores)
+        if isinstance(hx, tuple):
+            cloned = (hx[0].clone(), hx[1].clone())
+            for j, prevks in enumerate(beam.get_current_origin()):
+                cloned[0][0, range(j * beam_size, (j+1) * beam_size)] = hiddens[0][0, j * beam_size + prevks]
+                cloned[1][0, range(j * beam_size, (j+1) * beam_size)] = hiddens[1][0, j * beam_size + prevks]
+        else:
+            cloned = hx.clone()
+            for j, prevks in enumerate(beam.get_current_origin()):
+                cloned[0, range(j * beam_size, (j + 1) * beam_size)] = hiddens[0, j * beam_size + prevks]
+        hx = cloned
+
+    scores, ids = beam.sort_best()
+    hyps = beam.get_hyp(ids[:, 0])
+    return hyps, scores
+
+
 
 def beam_search(sentences: List[Sentence], tagger: SequenceTagger, lm: MySimpleLanguageModel, beam_size, lm_weight, emission_score_type='log-softmax', lm_score_type='log-softmax'):
     sentences.sort(key=lambda x: len(x), reverse=True)
@@ -970,9 +1087,13 @@ def beam_search(sentences: List[Sentence], tagger: SequenceTagger, lm: MySimpleL
 
     assert _validate_dict(tagger.tag_dictionary.item2idx, lm.dictionary.item2idx)
 
-    for sentence, tagger_feature, length in zip(sentences, tagger_features, lengths):
-        hyp, score = beam_search_one_sentence(tagger_feature, length, beam_size, lm, tagger, lm_weight, emission_score_type=emission_score_type, lm_score_type=lm_score_type)
-        tags.append([Label(tagger.tag_dictionary.get_item_for_index(x.item()))for x in hyp])
+    # for sentence, tagger_feature, length in zip(sentences, tagger_features, lengths):
+    #     hyp, score = beam_search_one_sentence(tagger_feature, length, beam_size, lm, tagger, lm_weight, emission_score_type=emission_score_type, lm_score_type=lm_score_type)
+    #     tags.append([Label(tagger.tag_dictionary.get_item_for_index(x.item()))for x in hyp])
+    # return tags
+    hyps, scores = beam_search_batch(tagger_features, lengths, beam_size, lm, tagger, lm_weight, emission_score_type, lm_score_type)
+    for i, hyp in enumerate(hyps):
+        tags.append([Label(tagger.tag_dictionary.get_item_for_index(hyp[j].item())) for j in range(lengths[i])])
     return tags
 
 
@@ -1099,16 +1220,24 @@ class HybridSequenceTagger(flair.nn.Model):
         else:
             gold_scores = tagger_gold_scores
 
-
-        beam_scores = torch.zeros(batch_size, self.beam_size, device=flair.device)
         tags = []
-        for i, sentence, tagger_feature, length in zip(range(batch_size), sentences, tagger_features, lengths):
-            hyps, scores = beam_search_one_sentence(tagger_feature, length, self.beam_size, self.lm, self.tagger, self.lm_weight,
-                                                    return_all_hyps=True, emission_score_type=self.emission_score_type,
-                                                    lm_score_type=self.lm_score_type)
-            beam_scores[i] = scores
-            if prediction:
-                tags.append([Label(self.tagger.tag_dictionary.get_item_for_index(x.item())) for x in hyps[0]])
+
+
+        hyps, beam_scores = beam_search_batch(tagger_features, lengths, self.beam_size, self.lm, self.tagger, self.lm_weight,
+                                         self.emission_score_type, self.lm_score_type)
+        if prediction:
+            for i, hyp in enumerate(hyps):
+                tags.append([Label(self.tag_dictionary.get_item_for_index(hyp[j].item())) for j in range(lengths[i])])
+
+        # beam_scores = torch.zeros(batch_size, self.beam_size, device=flair.device)
+        # for i, sentence, tagger_feature, length in zip(range(batch_size), sentences, tagger_features, lengths):
+        #     hyps, scores = beam_search_one_sentence(tagger_feature, length, self.beam_size, self.lm, self.tagger,
+        #                                             self.lm_weight,
+        #                                             return_all_hyps=True, emission_score_type=self.emission_score_type,
+        #                                             lm_score_type=self.lm_score_type)
+        #     beam_scores[i] = scores
+        #     if prediction:
+        #         tags.append([Label(self.tagger.tag_dictionary.get_item_for_index(x.item())) for x in hyps[0]])
 
         error_scores = torch.logsumexp(beam_scores, dim=1)
 
