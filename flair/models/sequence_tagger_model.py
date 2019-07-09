@@ -1227,7 +1227,7 @@ class HybridSequenceTagger(flair.nn.Model):
                                          self.emission_score_type, self.lm_score_type)
         if prediction:
             for i, hyp in enumerate(hyps):
-                tags.append([Label(self.tag_dictionary.get_item_for_index(hyp[j].item())) for j in range(lengths[i])])
+                tags.append([Label(self.tagger.tag_dictionary.get_item_for_index(hyp[j].item())) for j in range(lengths[i])])
 
         # beam_scores = torch.zeros(batch_size, self.beam_size, device=flair.device)
         # for i, sentence, tagger_feature, length in zip(range(batch_size), sentences, tagger_features, lengths):
