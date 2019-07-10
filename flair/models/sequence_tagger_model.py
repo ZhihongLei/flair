@@ -1011,12 +1011,9 @@ def beam_search_one_sentence(tagger_feature, length, beam_size, lm: MySimpleLang
 
         beam.advance(score)
         if isinstance(hx, tuple):
-            temp = (torch.zeros_like(hx[0]), torch.zeros_like(hx[1]))
-            temp[0][:, range(beam_size)] = hidden[0][:, beam.get_current_origin()]
-            temp[1][:, range(beam_size)] = hidden[1][:, beam.get_current_origin()]
+            temp = (hidden[0][:, beam.get_current_origin()], hidden[1][:, beam.get_current_origin()])
         else:
-            temp = torch.zeros_like(hx)
-            temp[:, range(beam_size)] = hidden[:, beam.get_current_origin()]
+            temp = hidden[:, beam.get_current_origin()]
         hx = temp
 
     scores, ids = beam.sort_best()
@@ -1033,7 +1030,7 @@ def beam_search_batch_v2(tagger_features, lengths, beam_size, lm, tagger, lm_wei
 
     max_length = max(lengths)
     for i in range(max_length):
-        emission_scores = tagger_features[:cursor+1, i, :].clone()
+        emission_scores = tagger_features[:cursor+1, i, :]
         input_tensor = torch.cat([beam.get_current_state() for beam in beams[:cursor + 1]]).view(((cursor + 1) * beam_size, -1))
         features, hiddens = lm.forward_step(input_tensor, hx)
 
@@ -1059,14 +1056,11 @@ def beam_search_batch_v2(tagger_features, lengths, beam_size, lm, tagger, lm_wei
             cursor = cursor - 1
 
         if isinstance(hx, tuple):
-            temp = (torch.zeros_like(hx[0][:, range((cursor+1)*beam_size), :]), torch.zeros_like(hx[1][:, range((cursor+1)*beam_size), :]))
-            for j, prevks in enumerate([beam.get_current_origin() for beam in beams[:cursor+1]]):
-                temp[0][:, range(j * beam_size, (j+1) * beam_size)] = hiddens[0][:, j * beam_size + prevks]
-                temp[1][:, range(j * beam_size, (j+1) * beam_size)] = hiddens[1][:, j * beam_size + prevks]
+            temp0 = torch.cat([hiddens[0][:, j * beam_size + prevks] for j, prevks in enumerate([beam.get_current_origin() for beam in beams[:cursor+1]])], dim=1)
+            temp1 = torch.cat([hiddens[1][:, j * beam_size + prevks] for j, prevks in enumerate([beam.get_current_origin() for beam in beams[:cursor + 1]])], dim=1)
+            temp = (temp0, temp1)
         else:
-            temp = torch.zeros_like(hx[:, range((cursor+1)*beam_size), :])
-            for j, prevks in enumerate([beam.get_current_origin() for beam in beams[:cursor+1]]):
-                temp[:, range(j * beam_size, (j + 1) * beam_size)] = hiddens[:, j * beam_size + prevks]
+            temp = torch.cat([hiddens[:, j * beam_size + prevks] for j, prevks in enumerate([beam.get_current_origin() for beam in beams[:cursor+1]])], dim=1)
         hx = temp
 
     scores = []
