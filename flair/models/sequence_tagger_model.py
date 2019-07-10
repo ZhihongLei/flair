@@ -1011,65 +1011,18 @@ def beam_search_one_sentence(tagger_feature, length, beam_size, lm: MySimpleLang
 
         beam.advance(score)
         if isinstance(hx, tuple):
-            cloned = (hx[0].clone(), hx[1].clone())
-            cloned[0][0, range(beam_size)] = hidden[0][0, beam.get_current_origin()]
-            cloned[1][0, range(beam_size)] = hidden[1][0, beam.get_current_origin()]
+            temp = (torch.zeros_like(hx[0]), torch.zeros_like(hx[1]))
+            temp[0][:, range(beam_size)] = hidden[0][:, beam.get_current_origin()]
+            temp[1][:, range(beam_size)] = hidden[1][:, beam.get_current_origin()]
         else:
-            cloned = hx.clone()
-            cloned[0, range(beam_size)] = hidden[0, beam.get_current_origin()]
-        hx = cloned
+            temp = torch.zeros_like(hx)
+            temp[:, range(beam_size)] = hidden[:, beam.get_current_origin()]
+        hx = temp
 
     scores, ids = beam.sort_best()
     hyp = beam.get_hyp(ids[0])
     return hyp, scores
 
-
-def beam_search_batch(tagger_features, lengths, beam_size, lm, tagger, lm_weight, emission_score_type='log-softmax', lm_score_type='log-softmax'):
-    batch_size = len(tagger_features)
-    beam = BatchBeam(beam_size, batch_size, tagger.tag_dictionary)
-    hx = lm.init_state(batch_size * beam_size)
-
-    max_length = max(lengths)
-    for i in range(max_length):
-        emission_scores = tagger_features[:, i, :]
-        features, hiddens = lm.forward_step(beam.get_current_state().view((batch_size * beam_size, -1)), hx)
-
-        lm_scores = features.view(batch_size, beam_size, -1)
-        if lm_score_type == 'log-softmax':
-            lm_scores = torch.nn.functional.log_softmax(lm_scores, dim=-1)
-
-        emission_scores = emission_scores.view((batch_size, 1, -1))
-        #emission_scores = emission_scores.repeat(1, beam_size, 1)
-        if emission_score_type == 'log-softmax':
-            emission_scores = torch.nn.functional.log_softmax(emission_scores, dim=-1)
-
-        if tagger.use_crf:
-            transition_scores = torch.cat([tagger.transitions.transpose(0, 1)[prev_tag] for prev_tag in beam.get_current_state()], dim=0).view((batch_size, beam_size, -1))
-            scores = emission_scores + (1.-lm_weight) * transition_scores + lm_scores * lm_weight   # (batch_size, beam_size, num_tags)
-        else:
-            scores = emission_scores + lm_scores * lm_weight
-
-        # scores : (batch_size, beam_size, num_tags)
-        for j in range(batch_size):
-            if i >= lengths[j]:
-                 scores[j, :, :] = 0.
-
-        beam.advance(scores)
-
-        if isinstance(hx, tuple):
-            cloned = (hx[0].clone(), hx[1].clone())
-            for j, prevks in enumerate(beam.get_current_origin()):
-                cloned[0][0, range(j * beam_size, (j+1) * beam_size)] = hiddens[0][0, j * beam_size + prevks]
-                cloned[1][0, range(j * beam_size, (j+1) * beam_size)] = hiddens[1][0, j * beam_size + prevks]
-        else:
-            cloned = hx.clone()
-            for j, prevks in enumerate(beam.get_current_origin()):
-                cloned[0, range(j * beam_size, (j + 1) * beam_size)] = hiddens[0, j * beam_size + prevks]
-        hx = cloned
-
-    scores, ids = beam.sort_best()
-    hyps = beam.get_hyp(ids[:, 0])
-    return hyps, scores
 
 
 def beam_search_batch_v2(tagger_features, lengths, beam_size, lm, tagger, lm_weight, emission_score_type='log-softmax', lm_score_type='log-softmax'):
@@ -1098,23 +1051,23 @@ def beam_search_batch_v2(tagger_features, lengths, beam_size, lm, tagger, lm_wei
         else:
             scores = emission_scores + lm_scores * lm_weight
 
-        for i in range(cursor+1):
-            beams[i].advance(scores[i].clone())
+        for j in range(cursor+1):
+            beams[j].advance(scores[j].clone())
 
         if i == max_length - 1: break
         while lengths[cursor] - 1 <= i:
             cursor = cursor - 1
 
         if isinstance(hx, tuple):
-            cloned = (hx[0][:, range((cursor+1)*beam_size), :].clone(), hx[1][:, range((cursor+1)*beam_size), :].clone())
+            temp = (torch.zeros_like(hx[0][:, range((cursor+1)*beam_size), :]), torch.zeros_like(hx[1][:, range((cursor+1)*beam_size), :]))
             for j, prevks in enumerate([beam.get_current_origin() for beam in beams[:cursor+1]]):
-                cloned[0][0, range(j * beam_size, (j+1) * beam_size)] = hiddens[0][0, j * beam_size + prevks]
-                cloned[1][0, range(j * beam_size, (j+1) * beam_size)] = hiddens[1][0, j * beam_size + prevks]
+                temp[0][:, range(j * beam_size, (j+1) * beam_size)] = hiddens[0][:, j * beam_size + prevks]
+                temp[1][:, range(j * beam_size, (j+1) * beam_size)] = hiddens[1][:, j * beam_size + prevks]
         else:
-            cloned = hx[:, range((cursor+1)*beam_size), :].clone()
+            temp = torch.zeros_like(hx[:, range((cursor+1)*beam_size), :])
             for j, prevks in enumerate([beam.get_current_origin() for beam in beams[:cursor+1]]):
-                cloned[0, range(j * beam_size, (j + 1) * beam_size)] = hiddens[0, j * beam_size + prevks]
-        hx = cloned
+                temp[:, range(j * beam_size, (j + 1) * beam_size)] = hiddens[:, j * beam_size + prevks]
+        hx = temp
 
     scores = []
     hyps = []
@@ -1140,7 +1093,7 @@ def beam_search(sentences: List[Sentence], tagger: SequenceTagger, lm: MySimpleL
     #     hyp, score = beam_search_one_sentence(tagger_feature, length, beam_size, lm, tagger, lm_weight, emission_score_type=emission_score_type, lm_score_type=lm_score_type)
     #     tags.append([Label(tagger.tag_dictionary.get_item_for_index(x.item()))for x in hyp])
     # return tags
-    hyps, scores = beam_search_batch(tagger_features, lengths, beam_size, lm, tagger, lm_weight, emission_score_type, lm_score_type)
+    hyps, scores = beam_search_batch_v2(tagger_features, lengths, beam_size, lm, tagger, lm_weight, emission_score_type, lm_score_type)
     for i, hyp in enumerate(hyps):
         tags.append([Label(tagger.tag_dictionary.get_item_for_index(hyp[j].item())) for j in range(lengths[i])])
     return tags
