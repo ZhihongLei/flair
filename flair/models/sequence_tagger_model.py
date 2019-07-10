@@ -945,7 +945,7 @@ def beam_search_batch(tagger_features, lengths, beam_size, lm, tagger, lm_weight
             scores = emission_scores + lm_scores * lm_weight
 
         for j in range(cursor+1):
-            beams[j].advance(scores[j].clone())
+            beams[j].advance(scores[j])
 
         # sentences must be in descending order by length
         if i == max_length - 1: break
