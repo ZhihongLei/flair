@@ -11,7 +11,7 @@ from flair.embeddings import TokenEmbeddings, WordEmbeddings, StackedEmbeddings,
 from flair.training_utils import EvaluationMetric
 from flair.visual.training_curves import Plotter
 from flair.models.sequence_tagger_model import HybridSequenceTagger
-from flair.models.language_model import MyLanguageModel, MySimpleLanguageModel
+from flair.models.language_model import MySimpleLanguageModel
 from flair.models import SequenceTagger
 from flair.trainers import ModelTrainer
 from flair.trainers.language_model_trainer import MySimpleLMTrainer
@@ -137,8 +137,6 @@ else:
 
         embeddings: StackedEmbeddings = StackedEmbeddings(embeddings=embedding_types)
 
-
-
         log.info('Initializing tagger model ...')
         log.info('Using word embeddings: {}'.format(str(embedding_types)))
         log.info('Using additional tag embeddings: {}'.format(str(additional_tag_embeddings)))
@@ -164,7 +162,7 @@ else:
             log.info(f'Pre-training tagger for {args.pretraining_epochs} epochs')
             tagger_pretrainer.train(os.path.join(args.working_dir, 'pretraining/tagger'), EvaluationMetric.MICRO_F1_SCORE, learning_rate=args.init_lr, mini_batch_size=32,
                       max_epochs=args.pretraining_epochs, anneal_factor=0.5, embeddings_in_memory=True,
-                      anneal_against_train_loss=False)
+                      anneal_against_train_loss=args.no_crf)
 
         if args.init_lm is None:
             train_data, dev_data, test_data = [lm.get_word_indices(data) for data in
@@ -172,7 +170,7 @@ else:
             lm_pretrainer = MySimpleLMTrainer(lm, train_data, dev_data, test_data, SGD)
             log.info(f'Pre-training LM for {args.pretraining_epochs} epochs')
             lm_pretrainer.train(base_path=os.path.join(args.working_dir, 'pretraining/lm'), learning_rate=2., mini_batch_size=16, max_epochs=args.pretraining_epochs,
-                      anneal_factor=0.5, anneal_against_train_loss=False)
+                      anneal_factor=0.5, anneal_against_train_loss=True)
 
         if args.init_tagger is None or args.init_lm is None:
             log.info('Pre-training done.')
@@ -204,7 +202,7 @@ log.info(model.parameters)
 trainer: ModelTrainer = ModelTrainer(model, corpus, optimizer)
 
 trainer.train(args.working_dir, EvaluationMetric.MICRO_F1_SCORE, learning_rate=args.init_lr, mini_batch_size=32,
-              max_epochs=args.num_epochs, anneal_factor=anneal_factor, embeddings_in_memory=True, anneal_against_train_loss=False)
+              max_epochs=args.num_epochs, anneal_factor=anneal_factor, embeddings_in_memory=True, anneal_against_train_loss=args.no_crf)
 
 plotter = Plotter()
 plotter.plot_training_curves('{}/loss.tsv'.format(args.working_dir))
