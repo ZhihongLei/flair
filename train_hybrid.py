@@ -162,7 +162,7 @@ else:
             log.info(f'Pre-training tagger for {args.pretraining_epochs} epochs')
             tagger_pretrainer.train(os.path.join(args.working_dir, 'pretraining/tagger'), EvaluationMetric.MICRO_F1_SCORE, learning_rate=args.init_lr, mini_batch_size=32,
                       max_epochs=args.pretraining_epochs, anneal_factor=0.5, embeddings_in_memory=True,
-                      anneal_against_train_loss=args.no_crf)
+                      anneal_against_train_loss=True)
 
         if args.init_lm is None:
             train_data, dev_data, test_data = [lm.get_word_indices(data) for data in
