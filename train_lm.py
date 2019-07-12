@@ -138,4 +138,4 @@ log.info('Working dir: ' + working_dir)
 
 
 trainer = MyLMTrainer(model, corpus, optimizer)
-trainer.train(base_path=working_dir, learning_rate=lr, mini_batch_size=16, max_epochs=args.num_epochs, anneal_factor=anneal_factor, anneal_against_train_loss=True)
+trainer.train(base_path=working_dir, learning_rate=lr, mini_batch_size=16, max_epochs=args.num_epochs, anneal_factor=anneal_factor, anneal_against_train_loss=False)
