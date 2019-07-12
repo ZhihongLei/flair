@@ -65,6 +65,9 @@ parser.add_argument('--additional-embeddings', nargs='*', type=def_additional_em
 parser.add_argument('--window-size', type=int, default=1, help='Window size of additional embeddings')
 parser.add_argument('--hidden-size', type=int, default=256, help='Hidden layer size')
 parser.add_argument('--num-hidden-layers', type=int, default=1, help='Number of hidden layers')
+parser.add_argument('--lm-embedding-size', type=int, default=10, help='Embedding size of LM')
+parser.add_argument('--lm-hidden-size', type=int, default=50, help='Hidden layer size of LM')
+parser.add_argument('--lm-num-hidden-layers', type=int, default=1, help='Number of hidden layers of LM')
 parser.add_argument('--dropout-rate', type=float, default=0.0, help='Dropout rate')
 parser.add_argument('--no-crf', action='store_true', help='Do not use CRF')
 parser.add_argument('--optimizer', default='sgd', choices=['sgd', 'adam'], help='Type of optimizer')
@@ -102,10 +105,13 @@ else:
     else:
         log.info('Initializing language model ...')
         lm = MySimpleLanguageModel(tag_type=tag_type,
-                                   embedding_size=10,
+                                   embedding_size=args.lm_embedding_size,
                                    dictionary=tag_dictionary,
-                                   hidden_size=50,
-                                   nlayers=1)
+                                   hidden_size=args.lm_hidden_size,
+                                   nlayers=args.lm_num_hidden_layers)
+        log.info(f'LM embedding size: {args.lm_embedding_size}')
+        log.info(f'{args.lm_num_hidden_layers} hidden layers of size: {args.lm_hidden_size}')
+
     if args.init_tagger:
         log.info(f'Loading initial tagger model from {args.init_tagger}')
         tagger = SequenceTagger.load_from_file(args.init_tagger)
