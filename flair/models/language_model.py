@@ -616,6 +616,9 @@ class MySimpleLanguageModel(nn.Module):
         rnn_output, hidden = self.rnn(packed)
         sentence_tensor, output_lengths = torch.nn.utils.rnn.pad_packed_sequence(rnn_output)
 
+        if self.dropout > 0:
+            sentence_tensor = self.drop(sentence_tensor)
+
         features = self.decoder(sentence_tensor)
         features = features.transpose_(0, 1)
 
@@ -631,7 +634,11 @@ class MySimpleLanguageModel(nn.Module):
         slice = slice.to(device=flair.device)
         slice_tensor = self.encoder(slice)
         slice_tensor = slice_tensor.transpose_(0, 1)
+        if self.dropout > 0:
+            slice_tensor = self.drop(slice_tensor)
         rnn_output, hx = self.rnn(slice_tensor, hx)
+        if self.dropout > 0:
+            rnn_output = self.drop(rnn_output)
         feature = self.decoder(rnn_output)
         return feature, hx
 
