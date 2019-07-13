@@ -99,3 +99,8 @@ log.info('Working dir: ' + working_dir)
 
 trainer = MySimpleLMTrainer(model, train_data, dev_data, test_data, optimizer)
 trainer.train(base_path=working_dir, learning_rate=lr, mini_batch_size=16, max_epochs=args.num_epochs, anneal_factor=anneal_factor, anneal_against_train_loss=False)
+
+log.info('Reset to best model...')
+model = MySimpleLanguageModel.load_from_file(os.path.join(args.working_dir, 'best-model.pt'))
+_, final_ppl = MySimpleLMTrainer.evaluate(model, test_data, 32)
+log.info(f'Final TEST PPL: {final_ppl}')
