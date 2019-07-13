@@ -574,9 +574,9 @@ class MyLMTrainer:
                 log.info(f'EPOCH {epoch + 1} done: loss {train_loss:.4f} - lr {learning_rate:.4f} - bad epochs {bad_epochs}')
 
                 dev_loss, dev_ppl = self.evaluate(self.model, self.corpus.dev, eval_mini_batch_size)
-                log.info(f'Dev loss: {dev_loss:.4f} Dev PPL: {dev_ppl:.4f}')
+                log.info(f'Dev loss: {dev_loss:.4f} DEV PPL: {dev_ppl:.4f}')
                 test_loss, test_ppl = self.evaluate(self.model, self.corpus.test, eval_mini_batch_size)
-                log.info(f'Test loss: {test_loss:.4f} Test PPL: {test_ppl:.4f}')
+                log.info(f'Test loss: {test_loss:.4f} TEST PPL: {test_ppl:.4f}')
                 
 
                 dev_loss_history.append(dev_loss)
@@ -777,9 +777,9 @@ class MySimpleLMTrainer:
                     f'EPOCH {epoch + 1} done: loss {train_loss:.4f} - lr {learning_rate:.4f} - bad epochs {bad_epochs}')
 
                 dev_loss, dev_ppl = self.evaluate(self.model, self.dev_data, eval_mini_batch_size)
-                log.info(f'Dev loss: {dev_loss:.4f} Dev PPL: {dev_ppl:.4f}')
+                log.info(f'Dev loss: {dev_loss:.4f} DEV PPL: {dev_ppl:.4f}')
                 test_loss, test_ppl = self.evaluate(self.model, self.test_data, eval_mini_batch_size)
-                log.info(f'Test loss: {test_loss:.4f} Test PPL: {test_ppl:.4f}')
+                log.info(f'Test loss: {test_loss:.4f} TEST PPL: {test_ppl:.4f}')
 
                 dev_loss_history.append(dev_loss)
 
