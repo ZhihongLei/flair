@@ -146,7 +146,7 @@ class NLPTaskDataFetcher:
 
             return NLPTaskDataFetcher.load_column_corpus(data_folder,
                                                          columns,
-                                                         tag_to_biloes='ner',
+                                                         tag_to_biloes=['ner', 'np'],
                                                          )
 
         # the CoNLL 03 task for German has an additional lemma column
@@ -155,7 +155,7 @@ class NLPTaskDataFetcher:
 
             return NLPTaskDataFetcher.load_column_corpus(data_folder,
                                                          columns,
-                                                         tag_to_biloes='ner')
+                                                         tag_to_biloes=['ner', 'np'])
 
         # the CoNLL 03 task for Dutch has no NP column
         if task == NLPTask.CONLL_03_DUTCH.value or task.startswith('wikiner'):
@@ -286,9 +286,11 @@ class NLPTaskDataFetcher:
 
         if tag_to_biloes is not None:
             # convert tag scheme to iobes
-            for sentence in sentences_train + sentences_test + sentences_dev:
-                sentence: Sentence = sentence
-                sentence.convert_tag_scheme(tag_type=tag_to_biloes, target_scheme='iobes')
+            tags = [tag_to_biloes] if isinstance(tag_to_biloes, str) else tag_to_biloes
+            for tag in tags:
+                for sentence in sentences_train + sentences_test + sentences_dev:
+                    sentence: Sentence = sentence
+                    sentence.convert_tag_scheme(tag_type=tag, target_scheme='iobes')
 
         return TaggedCorpus(sentences_train, sentences_dev, sentences_test, name=data_folder.name)
 
