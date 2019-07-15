@@ -884,6 +884,11 @@ class Beam(object):
         self.prevKs.append(prev_k)
         self.nextYs.append(bestScoresId - prev_k * num_words)
 
+    def advance_to_eos(self, word_scores):
+        word_scores = word_scores[:, self.eos]  # (K, )
+        beam_scores = word_scores + self.scores.clone()
+        self.scores = beam_scores
+
 
     def sort_best(self):
         """Sort the beam."""
@@ -925,6 +930,10 @@ def beam_search_batch(tagger_features, lengths, beam_size, lm, tagger, lm_weight
     hx = lm.init_state((cursor + 1) * beam_size)
 
     max_length = lengths[0]   # sentences must be in descending order by length
+    if isinstance(hx, tuple):
+        end_hx = [[], []]
+    else:
+        end_hx = []
     for i in range(max_length):
         emission_scores = tagger_features[:cursor+1, i, :]
         input_tensor = torch.cat([beam.get_current_state() for beam in beams[:cursor + 1]]).view(((cursor + 1) * beam_size, -1))
@@ -948,16 +957,41 @@ def beam_search_batch(tagger_features, lengths, beam_size, lm, tagger, lm_weight
             beams[j].advance(scores[j])
 
         # sentences must be in descending order by length
-        if i == max_length - 1: break
-        while lengths[cursor] - 1 <= i:
+        prev_cursor = cursor
+        while cursor >= 0 and lengths[cursor] - 1 <= i:
             cursor = cursor - 1
 
         if isinstance(hx, tuple):
-            temp = (torch.cat([hiddens[0][:, j * beam_size + prevks] for j, prevks in enumerate([beam.get_current_origin() for beam in beams[:cursor+1]])], dim=1),
-                    torch.cat([hiddens[1][:, j * beam_size + prevks] for j, prevks in enumerate([beam.get_current_origin() for beam in beams[:cursor + 1]])], dim=1))
+            if cursor >= 0:
+                temp = (torch.cat([hiddens[0][:, j * beam_size + prevks] for j, prevks in enumerate([beam.get_current_origin() for beam in beams[:cursor+1]])], dim=1),
+                    torch.cat([hiddens[1][:, j * beam_size + prevks] for j, prevks in enumerate([beam.get_current_origin() for beam in beams[:cursor+1]])], dim=1))
+                hx = temp
+            if cursor < prev_cursor:
+                end_hx[0].extend([hiddens[0][:, j * beam_size + prevks] for j, prevks in enumerate([beam.get_current_origin() for beam in beams[cursor+1 : prev_cursor+1]])][::-1])
+                end_hx[1].extend([hiddens[1][:, j * beam_size + prevks] for j, prevks in enumerate([beam.get_current_origin() for beam in beams[cursor+1 : prev_cursor+1]])][::-1])
         else:
-            temp = torch.cat([hiddens[:, j * beam_size + prevks] for j, prevks in enumerate([beam.get_current_origin() for beam in beams[:cursor+1]])], dim=1)
-        hx = temp
+            if cursor >= 0:
+                temp = torch.cat([hiddens[:, j * beam_size + prevks] for j, prevks in enumerate([beam.get_current_origin() for beam in beams[:cursor+1]])], dim=1)
+                hx = temp
+            if cursor < prev_cursor:
+                end_hx.extend([hiddens[:, j * beam_size + prevks] for j, prevks in enumerate([beam.get_current_origin() for beam in beams[cursor+1 : prev_cursor+1]])][::-1])
+
+    if isinstance(hx, tuple):
+        end_hx[0] = end_hx[0][::-1]
+        end_hx[1] = end_hx[1][::-1]
+        end_hx = (torch.cat(end_hx[0], dim=1), torch.cat(end_hx[1], dim=1))
+    else:
+        end_hx = end_hx[::-1]
+        end_hx = torch.cat(end_hx, dim=1)
+    input_tensor = torch.cat([beam.get_current_state() for beam in beams]).view((batch_size * beam_size, -1))
+
+
+    features, _ = lm.forward_step(input_tensor, end_hx)
+    lm_scores = features.view(batch_size, beam_size, -1)
+    if lm_score_type == 'log-softmax':
+        lm_scores = torch.nn.functional.log_softmax(lm_scores, dim=-1)
+    for j in range(len(beams)):
+        beams[j].advance_to_eos(lm_scores[j]*lm_weight)
 
     scores = []
     hyps = []
@@ -1088,8 +1122,8 @@ class HybridSequenceTagger(flair.nn.Model):
         tagger_features, lengths, gold_tags = self.tagger.forward(sentences, sort=False)
 
         word_indices = self.lm.get_word_indices(sentences)
-        batch_data, lengths = self.lm.get_word_indices_tensor(word_indices)
-        lm_gold_losses, num_words, lm_features = self.lm.forward(batch_data, lengths, reduce_loss=False)
+        batch_data, lm_lengths = self.lm.get_word_indices_tensor(word_indices)
+        lm_gold_losses, num_words, lm_features = self.lm.forward(batch_data, lm_lengths, reduce_loss=False)
 
         if self.lm_score_type == 'logits':
             tagger_features = tagger_features + self.lm_weight * lm_features
