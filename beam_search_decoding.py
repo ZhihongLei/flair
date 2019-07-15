@@ -19,7 +19,6 @@ parser.add_argument('--tagger-model', required=True, help='Path to the tagger mo
 parser.add_argument('--language-model', required=True, help='Path to the tag language model')
 parser.add_argument('--lm-weight', type=float, default=0.2, help='Beam size')
 parser.add_argument('--beam-size', type=int, default=10, help='Beam size')
-parser.add_argument('--lm-score-type', choices=['log-softmax', 'logits'], default='log-softmax',  help='Type of LM score')
 
 args = parser.parse_args()
 
@@ -48,6 +47,5 @@ log.info(corpus)
 
 metric, _ = evalute_beam_search(tagger, lm, corpus.test, args.lm_weight,
                                 args.beam_size,
-                                emission_score_type='log-softmax' if tagger.use_crf else 'logits',
-                                lm_score_type=args.lm_score_type)
+                                emission_score_type='log-softmax' if tagger.use_crf else 'logits')
 print(metric.micro_avg_f_score())

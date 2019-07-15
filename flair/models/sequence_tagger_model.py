@@ -923,7 +923,7 @@ def _validate_dict(tagger_dict, lm_dict):
 
 
 
-def beam_search_batch(tagger_features, lengths, beam_size, lm, tagger, lm_weight, emission_score_type='log-softmax', lm_score_type='log-softmax'):
+def beam_search_batch(tagger_features, lengths, beam_size, lm, tagger, lm_weight, emission_score_type='log-softmax'):
     batch_size = len(tagger_features)
     beams = [Beam(beam_size, tagger.tag_dictionary) for _ in range(batch_size)]
     cursor = batch_size - 1
@@ -940,8 +940,7 @@ def beam_search_batch(tagger_features, lengths, beam_size, lm, tagger, lm_weight
         features, hiddens = lm.forward_step(input_tensor, hx)
 
         lm_scores = features.view((cursor + 1), beam_size, -1)
-        if lm_score_type == 'log-softmax':
-            lm_scores = torch.nn.functional.log_softmax(lm_scores, dim=-1)
+        lm_scores = torch.nn.functional.log_softmax(lm_scores, dim=-1)
 
         emission_scores = emission_scores.view(((cursor+1), 1, -1))
         if emission_score_type == 'log-softmax':
@@ -967,14 +966,14 @@ def beam_search_batch(tagger_features, lengths, beam_size, lm, tagger, lm_weight
                     torch.cat([hiddens[1][:, j * beam_size + prevks] for j, prevks in enumerate([beam.get_current_origin() for beam in beams[:cursor+1]])], dim=1))
                 hx = temp
             if cursor < prev_cursor:
-                end_hx[0].extend([hiddens[0][:, j * beam_size + prevks] for j, prevks in enumerate([beam.get_current_origin() for beam in beams[cursor+1 : prev_cursor+1]])][::-1])
-                end_hx[1].extend([hiddens[1][:, j * beam_size + prevks] for j, prevks in enumerate([beam.get_current_origin() for beam in beams[cursor+1 : prev_cursor+1]])][::-1])
+                end_hx[0].append(torch.cat([hiddens[0][:, j * beam_size + prevks] for j, prevks in enumerate([beam.get_current_origin() for beam in beams[cursor+1 : prev_cursor+1]])], dim=1))
+                end_hx[1].append(torch.cat([hiddens[1][:, j * beam_size + prevks] for j, prevks in enumerate([beam.get_current_origin() for beam in beams[cursor+1 : prev_cursor+1]])], dim=1))
         else:
             if cursor >= 0:
                 temp = torch.cat([hiddens[:, j * beam_size + prevks] for j, prevks in enumerate([beam.get_current_origin() for beam in beams[:cursor+1]])], dim=1)
                 hx = temp
             if cursor < prev_cursor:
-                end_hx.extend([hiddens[:, j * beam_size + prevks] for j, prevks in enumerate([beam.get_current_origin() for beam in beams[cursor+1 : prev_cursor+1]])][::-1])
+                end_hx.append(torch.cat([hiddens[:, j * beam_size + prevks] for j, prevks in enumerate([beam.get_current_origin() for beam in beams[cursor+1 : prev_cursor+1]])][::-1], dim=1))
 
     if isinstance(hx, tuple):
         end_hx[0] = end_hx[0][::-1]
@@ -985,13 +984,17 @@ def beam_search_batch(tagger_features, lengths, beam_size, lm, tagger, lm_weight
         end_hx = torch.cat(end_hx, dim=1)
     input_tensor = torch.cat([beam.get_current_state() for beam in beams]).view((batch_size * beam_size, -1))
 
-
     features, _ = lm.forward_step(input_tensor, end_hx)
     lm_scores = features.view(batch_size, beam_size, -1)
-    if lm_score_type == 'log-softmax':
-        lm_scores = torch.nn.functional.log_softmax(lm_scores, dim=-1)
+    lm_scores = torch.nn.functional.log_softmax(lm_scores, dim=-1)
+
+    scores = lm_weight * lm_scores
+    if tagger.use_crf:
+        transition_scores = torch.cat([tagger.transitions.transpose(0, 1)[beam.get_current_state()] for beam in beams]).view((batch_size, beam_size, -1))
+        scores = scores + (1. - lm_weight) * transition_scores
+
     for j in range(len(beams)):
-        beams[j].advance_to_eos(lm_scores[j]*lm_weight)
+        beams[j].advance_to_eos(scores[j])
 
     scores = []
     hyps = []
@@ -1006,14 +1009,14 @@ def beam_search_batch(tagger_features, lengths, beam_size, lm, tagger, lm_weight
 
 
 
-def beam_search(sentences: List[Sentence], tagger: SequenceTagger, lm: MySimpleLanguageModel, beam_size, lm_weight, emission_score_type='log-softmax', lm_score_type='log-softmax'):
+def beam_search(sentences: List[Sentence], tagger: SequenceTagger, lm: MySimpleLanguageModel, beam_size, lm_weight, emission_score_type='log-softmax'):
     sentences.sort(key=lambda x: len(x), reverse=True)
     tagger_features, lengths, gold_tags = tagger.forward(sentences, sort=False)
     tags = []
 
     assert _validate_dict(tagger.tag_dictionary.item2idx, lm.dictionary.item2idx)
 
-    hyps, scores = beam_search_batch(tagger_features, lengths, beam_size, lm, tagger, lm_weight, emission_score_type, lm_score_type)
+    hyps, scores = beam_search_batch(tagger_features, lengths, beam_size, lm, tagger, lm_weight, emission_score_type)
     for i, hyp in enumerate(hyps):
         tags.append([Label(tagger.tag_dictionary.get_item_for_index(hyp[j].item())) for j in range(lengths[i])])
     return tags
@@ -1025,7 +1028,6 @@ def evalute_beam_search(tagger,
                         lm_weight,
                         beam_size=10,
                         emission_score_type='log-softmax',
-                        lm_score_type='log-softmax',
                         eval_mini_batch_size: int = 16,
                         embeddings_in_memory: bool = True,
                         out_path: Path = None) -> (dict, float):
@@ -1042,7 +1044,7 @@ def evalute_beam_search(tagger,
         for batch in batches:
             batch_no += 1
 
-            tags = beam_search(batch, tagger, lm, beam_size, lm_weight, emission_score_type, lm_score_type)
+            tags = beam_search(batch, tagger, lm, beam_size, lm_weight, emission_score_type)
             loss = 0
 
             eval_loss += loss
@@ -1089,13 +1091,12 @@ def evalute_beam_search(tagger,
 
 
 class HybridSequenceTagger(flair.nn.Model):
-    def __init__(self, tagger: SequenceTagger, lm: MySimpleLanguageModel, beam_size, lm_score_type='log-softmax', lm_weight=1.0):
+    def __init__(self, tagger: SequenceTagger, lm: MySimpleLanguageModel, beam_size, lm_weight=1.0):
         super(HybridSequenceTagger, self).__init__()
         self.tagger = tagger
         self.lm = lm
         self.beam_size = beam_size
         self.lm_weight = lm_weight
-        self.lm_score_type = lm_score_type    # 'logits' or 'log-softmax'
         self.emission_score_type = 'logits'
 
         self.tag_type = tagger.tag_type
@@ -1125,9 +1126,6 @@ class HybridSequenceTagger(flair.nn.Model):
         batch_data, lm_lengths = self.lm.get_word_indices_tensor(word_indices)
         lm_gold_losses, num_words, lm_features = self.lm.forward(batch_data, lm_lengths, reduce_loss=False)
 
-        if self.lm_score_type == 'logits':
-            tagger_features = tagger_features + self.lm_weight * lm_features
-
         gold_tags, _ = pad_tensors(gold_tags, self.lm.dictionary.get_idx_for_item('<pad>'))
         if self.tagger.use_crf:
             tagger_gold_emission_scores, tagger_gold_transition_scores = self.tagger._score_sentence(tagger_features, gold_tags, lengths, separate_scores=True)
@@ -1135,15 +1133,12 @@ class HybridSequenceTagger(flair.nn.Model):
         else:
             tagger_gold_scores = self.tagger._score_sentence(tagger_features, gold_tags, lengths)
 
-        if self.lm_score_type == 'log-softmax':
-            lm_gold_scores = -lm_gold_losses.sum(dim=1)
-            gold_scores = tagger_gold_scores + lm_gold_scores * self.lm_weight
-        else:
-            gold_scores = tagger_gold_scores
+        lm_gold_scores = -lm_gold_losses.sum(dim=1)
+        gold_scores = tagger_gold_scores + lm_gold_scores * self.lm_weight
 
         tags = []
         hyps, beam_scores = beam_search_batch(tagger_features, lengths, self.beam_size, self.lm, self.tagger, self.lm_weight,
-                                         self.emission_score_type, self.lm_score_type)
+                                         self.emission_score_type)
         if prediction:
             for i, hyp in enumerate(hyps):
                 tags.append([Label(self.tagger.tag_dictionary.get_item_for_index(hyp[j].item())) for j in range(lengths[i])])
@@ -1158,7 +1153,7 @@ class HybridSequenceTagger(flair.nn.Model):
 
     def predict(self, sentences: Union[List[Sentence], Sentence], mini_batch_size=32):
         with torch.no_grad():
-            return beam_search(sentences, self.tagger, self.lm, self.beam_size, self.lm_weight, emission_score_type=self.emission_score_type, lm_score_type=self.lm_score_type)
+            return beam_search(sentences, self.tagger, self.lm, self.beam_size, self.lm_weight, emission_score_type=self.emission_score_type)
 
 
 
@@ -1184,7 +1179,6 @@ class HybridSequenceTagger(flair.nn.Model):
             'tagger': self.tagger,
             'beam_size': self.beam_size,
             'lm_weight': self.lm_weight,
-            'lm_score_type': self.lm_score_type,
             'emission_score_type': self.emission_score_type
         }
         self.save_torch_model(model_state, str(model_file))
@@ -1197,7 +1191,6 @@ class HybridSequenceTagger(flair.nn.Model):
             'tagger': self.tagger,
             'beam_size': self.beam_size,
             'lm_weight': self.lm_weight,
-            'lm_score_type': self.lm_score_type,
             'emission_score_type': self.emission_score_type,
             'optimizer_state_dict': optimizer_state,
             'scheduler_state_dict': scheduler_state,
@@ -1212,7 +1205,6 @@ class HybridSequenceTagger(flair.nn.Model):
         model = cls(state['tagger'],
                     state['lm'],
                     state['beam_size'],
-                    state['lm_score_type'] if 'lm_score_type' in state else 'log-softmax',
                     state['lm_weight'] if 'lm_weight' in state else 1.0)
         model.load_state_dict(state['state_dict'])
         model.eval()

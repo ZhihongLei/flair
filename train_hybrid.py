@@ -53,7 +53,6 @@ parser.add_argument('--task', type=def_task, required=True, help='Task and data 
 parser.add_argument('--tag-type', required=True, help='Tag type to train')
 parser.add_argument('--beam-size', type=int, default=-1, help='Beam size')
 parser.add_argument('--lm-weight', type=float, default=1.0, help='Weight of language model score')
-parser.add_argument('--lm-score-type', choices=['log-softmax', 'logits'], default='log-softmax',  help='Type of LM score')
 parser.add_argument('--word-embeddings', nargs='*', help='Type(s) of word embeddings')
 parser.add_argument('--init-lm', help='Initial language model')
 parser.add_argument('--init-tagger', help='Initial tagger model')
@@ -187,9 +186,8 @@ else:
     lm_weight = args.lm_weight
 
     log.info(f'Beam size: {beam_size}')
-    log.info(f'Type of LM score: {args.lm_score_type}')
     log.info(f'LM weight: {lm_weight}')
-    model = HybridSequenceTagger(tagger, lm, beam_size, args.lm_score_type, lm_weight)
+    model = HybridSequenceTagger(tagger, lm, beam_size, lm_weight)
 
 
 if args.optimizer == 'sgd':
@@ -208,7 +206,7 @@ log.info(model.parameters)
 trainer: ModelTrainer = ModelTrainer(model, corpus, optimizer)
 
 trainer.train(args.working_dir, EvaluationMetric.MICRO_F1_SCORE, learning_rate=args.init_lr, mini_batch_size=32,
-              max_epochs=args.num_epochs, anneal_factor=anneal_factor, embeddings_in_memory=True, anneal_against_train_loss=args.no_crf)
+              max_epochs=args.num_epochs, anneal_factor=anneal_factor, embeddings_in_memory=True, anneal_against_train_loss=True)
 
 plotter = Plotter()
 plotter.plot_training_curves('{}/loss.tsv'.format(args.working_dir))
