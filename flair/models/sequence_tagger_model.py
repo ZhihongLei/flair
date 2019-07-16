@@ -929,10 +929,7 @@ def beam_search_batch(tagger_features, lengths, beam_size, lm, tagger, lm_weight
     hx = lm.init_state((cursor + 1) * beam_size)
 
     max_length = lengths[0]   # sentences must be in descending order by length
-    if isinstance(hx, tuple):
-        end_hx = [[], []]
-    else:
-        end_hx = []
+
     for i in range(max_length):
         emission_scores = tagger_features[:cursor+1, i, :]
         input_tensor = torch.cat([beam.get_current_state() for beam in beams[:cursor + 1]]).view(((cursor + 1) * beam_size, -1))
@@ -955,56 +952,25 @@ def beam_search_batch(tagger_features, lengths, beam_size, lm, tagger, lm_weight
             beams[j].advance(scores[j])
 
         # sentences must be in descending order by length
-        prev_cursor = cursor
         while cursor >= 0 and lengths[cursor] - 1 <= i:
             cursor = cursor - 1
+        if cursor < 0: break
 
         if isinstance(hx, tuple):
-            if cursor >= 0:
-                temp = (torch.cat([hiddens[0][:, j * beam_size + prevks] for j, prevks in enumerate([beam.get_current_origin() for beam in beams[:cursor+1]])], dim=1),
-                    torch.cat([hiddens[1][:, j * beam_size + prevks] for j, prevks in enumerate([beam.get_current_origin() for beam in beams[:cursor+1]])], dim=1))
-                hx = temp
-            if cursor < prev_cursor:
-                end_hx[0].append(torch.cat([hiddens[0][:, j * beam_size + prevks] for j, prevks in enumerate([beam.get_current_origin() for beam in beams[cursor+1 : prev_cursor+1]])], dim=1))
-                end_hx[1].append(torch.cat([hiddens[1][:, j * beam_size + prevks] for j, prevks in enumerate([beam.get_current_origin() for beam in beams[cursor+1 : prev_cursor+1]])], dim=1))
+            temp = (torch.cat([hiddens[0][:, j * beam_size + prevks] for j, prevks in enumerate([beam.get_current_origin() for beam in beams[:cursor+1]])], dim=1),
+                torch.cat([hiddens[1][:, j * beam_size + prevks] for j, prevks in enumerate([beam.get_current_origin() for beam in beams[:cursor+1]])], dim=1))
+            hx = temp
         else:
-            if cursor >= 0:
-                temp = torch.cat([hiddens[:, j * beam_size + prevks] for j, prevks in enumerate([beam.get_current_origin() for beam in beams[:cursor+1]])], dim=1)
-                hx = temp
-            if cursor < prev_cursor:
-                end_hx.append(torch.cat([hiddens[:, j * beam_size + prevks] for j, prevks in enumerate([beam.get_current_origin() for beam in beams[cursor+1 : prev_cursor+1]])][::-1], dim=1))
+            temp = torch.cat([hiddens[:, j * beam_size + prevks] for j, prevks in enumerate([beam.get_current_origin() for beam in beams[:cursor+1]])], dim=1)
+            hx = temp
 
-    if isinstance(hx, tuple):
-        end_hx[0] = end_hx[0][::-1]
-        end_hx[1] = end_hx[1][::-1]
-        end_hx = (torch.cat(end_hx[0], dim=1), torch.cat(end_hx[1], dim=1))
-    else:
-        end_hx = end_hx[::-1]
-        end_hx = torch.cat(end_hx, dim=1)
-    input_tensor = torch.cat([beam.get_current_state() for beam in beams]).view((batch_size * beam_size, -1))
-
-    features, _ = lm.forward_step(input_tensor, end_hx)
-    lm_scores = features.view(batch_size, beam_size, -1)
-    lm_scores = torch.nn.functional.log_softmax(lm_scores, dim=-1)
-    lm_scores = lm_scores[:, :, tagger.tag_dictionary.get_idx_for_item(STOP_TAG)]   # (batch_size, beam_size)
-
-    scores = lm_weight * lm_scores
-    # if tagger.use_crf:
-    #     transition_scores = torch.cat([tagger.transitions.transpose(0, 1)[beam.get_current_state()] for beam in beams]).view((batch_size, beam_size, -1))
-    #     scores = scores + (1. - lm_weight) * transition_scores
-
-    # if eos_scores is not None:
-    #     for beam in beams:
-    #         transition_scores = eos_scores[beam.get_current_state()]
-    #         if tagger.use_crf:
-    #             beam.advance_to_eos(transition_scores)
-    #         else:
-    #             beam.advance_to_eos(transition_scores * lm_weight)
-
-    for score, beam in zip(scores, beams):
-        if tagger.use_crf:
-            score = score + (1.-lm_weight) * eos_scores[beam.get_current_state()]
-        beam.advance_to_eos(score)
+    if eos_scores is not None:
+        for beam in beams:
+            transition_scores = eos_scores[beam.get_current_state()]
+            if tagger.use_crf:
+                beam.advance_to_eos(transition_scores)
+            else:
+                beam.advance_to_eos(transition_scores * lm_weight)
 
     scores = []
     hyps = []
@@ -1101,15 +1067,18 @@ def evalute_beam_search(tagger,
 
 
 class HybridSequenceTagger(flair.nn.Model):
-    def __init__(self, tagger: SequenceTagger, lm: MySimpleLanguageModel, beam_size, lm_weight=1.0):
+    def __init__(self, tagger: SequenceTagger, lm: MySimpleLanguageModel, beam_size, lm_weight=1.0, eos_scores=None):
         super(HybridSequenceTagger, self).__init__()
         self.tagger = tagger
         self.lm = lm
         self.beam_size = beam_size
         self.lm_weight = lm_weight
         self.emission_score_type = 'logits'
-        self.eos_scores = torch.nn.Parameter(torch.randn(self.tagger.tagset_size))  # transition score from c to STOP
-        self.eos_scores.detach()[self.tagger.tag_dictionary.get_idx_for_item(STOP_TAG)] = -10000
+        if eos_scores is None:
+            self.eos_scores = torch.nn.Parameter(torch.randn(self.tagger.tagset_size))  # transition score from c to STOP
+            self.eos_scores.detach()[self.tagger.tag_dictionary.get_idx_for_item(STOP_TAG)] = -10000
+        else:
+            self.eos_scores = eos_scores
 
         self.tag_type = tagger.tag_type
         self.to(device=flair.device)
@@ -1147,9 +1116,9 @@ class HybridSequenceTagger(flair.nn.Model):
         lm_gold_scores = -lm_gold_losses.sum(dim=1)
         gold_scores = tagger_gold_scores + lm_gold_scores * self.lm_weight
         if self.tagger.use_crf:
-            gold_scores = gold_scores + self.eos_scores[torch.tensor([tag[length-1] for tag, length in zip(gold_tags, lengths)]).to(flair.device)] * (1-self.lm_weight)
-        #else:
-        #    gold_scores = gold_scores + self.eos_scores[torch.tensor([tag[length-1] for tag, length in zip(gold_tags, lengths)]).to(flair.device)] * self.lm_weight
+            gold_scores = gold_scores + self.eos_scores[torch.tensor([tag[length-1] for tag, length in zip(gold_tags, lengths)]).to(flair.device)]
+        else:
+            gold_scores = gold_scores + self.eos_scores[torch.tensor([tag[length-1] for tag, length in zip(gold_tags, lengths)]).to(flair.device)] * self.lm_weight
 
         tags = []
         hyps, beam_scores = beam_search_batch(tagger_features, lengths, self.beam_size, self.lm, self.tagger, self.lm_weight,
@@ -1194,7 +1163,8 @@ class HybridSequenceTagger(flair.nn.Model):
             'tagger': self.tagger,
             'beam_size': self.beam_size,
             'lm_weight': self.lm_weight,
-            'emission_score_type': self.emission_score_type
+            'emission_score_type': self.emission_score_type,
+            'eos_scores': self.eos_scores
         }
         self.save_torch_model(model_state, str(model_file))
 
@@ -1207,6 +1177,7 @@ class HybridSequenceTagger(flair.nn.Model):
             'beam_size': self.beam_size,
             'lm_weight': self.lm_weight,
             'emission_score_type': self.emission_score_type,
+            'eos_scores': self.eos_scores,
             'optimizer_state_dict': optimizer_state,
             'scheduler_state_dict': scheduler_state,
             'epoch': epoch,
@@ -1220,7 +1191,8 @@ class HybridSequenceTagger(flair.nn.Model):
         model = cls(state['tagger'],
                     state['lm'],
                     state['beam_size'],
-                    state['lm_weight'] if 'lm_weight' in state else 1.0)
+                    state['lm_weight'] if 'lm_weight' in state else 1.0,
+                    state['eos_scores'] if 'eos_scores' in state else None)
         model.load_state_dict(state['state_dict'])
         model.eval()
         model.to(flair.device)
