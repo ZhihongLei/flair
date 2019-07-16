@@ -953,7 +953,7 @@ def beam_search_batch(tagger_features, lengths, beam_size, lm, tagger, lm_weight
             beams[j].advance(scores[j])
 
         # sentences must be in descending order by length
-        prev_cursor = cursor
+        # prev_cursor = cursor
         while cursor >= 0 and lengths[cursor] - 1 <= i:
             cursor = cursor - 1
 
@@ -972,19 +972,19 @@ def beam_search_batch(tagger_features, lengths, beam_size, lm, tagger, lm_weight
             # if cursor < prev_cursor:
             #     end_hx = torch.cat([hiddens[:, j * beam_size + prevks] for j, prevks in enumerate([beam.get_current_origin() for beam in beams[cursor+1 : prev_cursor+1]])], dim=1)
 
-        if cursor < prev_cursor:
+        # if cursor < prev_cursor:
         #     input_tensor = torch.cat([beam.get_current_state() for beam in beams[cursor+1 : prev_cursor+1]]).view(((prev_cursor - cursor) * beam_size, -1))
         #     features, _ = lm.forward_step(input_tensor, end_hx)
         #     lm_scores = features.view(prev_cursor - cursor, beam_size, -1)
         #     lm_scores = torch.nn.functional.log_softmax(lm_scores, dim=-1)
         #     scores = lm_weight * lm_scores
-            if tagger.use_crf:
+        #     if tagger.use_crf:
                 # transition_scores = torch.cat(
                 #     [tagger.transitions.transpose(0, 1)[beam.get_current_state()] for beam in beams[cursor+1 : prev_cursor+1]]).view(
                 #     (prev_cursor - cursor, beam_size, -1))
                 # scores = scores + (1. - lm_weight) * transition_scores
-                for beam in beams[cursor+1 : prev_cursor+1]:
-                    beam.advance_to_eos(tagger.transitions.transpose(0, 1)[beam.get_current_state()])
+                # for beam in beams[cursor+1 : prev_cursor+1]:
+                #     beam.advance_to_eos(tagger.transitions.transpose(0, 1)[beam.get_current_state()])
                 # for j in range(cursor+1, prev_cursor+1):
                 #     beams[j].advance_to_eos(transition_scores[j-cursor-1])
 
@@ -1119,7 +1119,7 @@ class HybridSequenceTagger(flair.nn.Model):
 
         gold_tags, _ = pad_tensors(gold_tags, self.lm.dictionary.get_idx_for_item('<pad>'))
         if self.tagger.use_crf:
-            tagger_gold_emission_scores, tagger_gold_transition_scores = self.tagger._score_sentence(tagger_features, gold_tags, lengths, separate_scores=True, pad_stop=True)
+            tagger_gold_emission_scores, tagger_gold_transition_scores = self.tagger._score_sentence(tagger_features, gold_tags, lengths, separate_scores=True, pad_stop=False)
             tagger_gold_scores = tagger_gold_emission_scores + (1.0 - self.lm_weight) * tagger_gold_transition_scores
         else:
             tagger_gold_scores = self.tagger._score_sentence(tagger_features, gold_tags, lengths)
