@@ -526,7 +526,7 @@ class SequenceTagger(flair.nn.Model):
                 
         raise ValueError('Layer must be chosen from embeddings, hidden and logits')
 
-    def _score_sentence(self, feats, tags, lens_, separate_scores=False):
+    def _score_sentence(self, feats, tags, lens_, separate_scores=False, pad_stop=True):
 
         start = torch.LongTensor([self.tag_dictionary.get_idx_for_item(START_TAG)]).to(flair.device)
         start = start[None, :].repeat(tags.shape[0], 1)
@@ -548,7 +548,11 @@ class SequenceTagger(flair.nn.Model):
             for i in range(feats.shape[0]):
                 r = torch.LongTensor(range(lens_[i])).to(flair.device)
                 emission_score[i] = torch.sum(feats[i, r, tags[i, :lens_[i]]])
-                transition_score[i] = torch.sum(self.transitions[pad_stop_tags[i, :lens_[i] + 1], pad_start_tags[i, :lens_[i] + 1]])
+                if pad_stop:
+                    transition_score[i] = torch.sum(self.transitions[pad_stop_tags[i, :lens_[i] + 1], pad_start_tags[i, :lens_[i] + 1]])
+                else:
+                    transition_score[i] = torch.sum(
+                        self.transitions[pad_stop_tags[i, :lens_[i]], pad_start_tags[i, :lens_[i]]])
 
             if separate_scores:
                 return emission_score, transition_score
@@ -884,9 +888,7 @@ class Beam(object):
 
     def advance_to_eos(self, word_scores):
         word_scores = word_scores[:, self.eos]  # (K, )
-        beam_scores = word_scores + self.scores.clone()
-        self.scores = beam_scores
-
+        self.scores = word_scores + self.scores.clone()
 
     def sort_best(self):
         """Sort the beam."""
@@ -1115,7 +1117,7 @@ class HybridSequenceTagger(flair.nn.Model):
 
         gold_tags, _ = pad_tensors(gold_tags, self.lm.dictionary.get_idx_for_item('<pad>'))
         if self.tagger.use_crf:
-            tagger_gold_emission_scores, tagger_gold_transition_scores = self.tagger._score_sentence(tagger_features, gold_tags, lengths, separate_scores=True)
+            tagger_gold_emission_scores, tagger_gold_transition_scores = self.tagger._score_sentence(tagger_features, gold_tags, lengths, separate_scores=True, pad_stop=False)
             tagger_gold_scores = tagger_gold_emission_scores + (1.0 - self.lm_weight) * tagger_gold_transition_scores
         else:
             tagger_gold_scores = self.tagger._score_sentence(tagger_features, gold_tags, lengths)
