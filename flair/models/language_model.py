@@ -650,11 +650,11 @@ class MySimpleLanguageModel(nn.Module):
 
 
     def get_word_indices(self, sentences):
-        return [([self.dictionary.get_idx_for_item('<START>')] +
-                 [self.dictionary.get_idx_for_item(token.get_tag(self.tag_type).value) for token in sentence.tokens]) for sentence in sentences]
         # return [([self.dictionary.get_idx_for_item('<START>')] +
-        #     [self.dictionary.get_idx_for_item(token.get_tag(self.tag_type).value) for token in sentence.tokens] +
-        #     [self.dictionary.get_idx_for_item('<STOP>')]) for sentence in sentences]
+        #          [self.dictionary.get_idx_for_item(token.get_tag(self.tag_type).value) for token in sentence.tokens]) for sentence in sentences]
+        return [([self.dictionary.get_idx_for_item('<START>')] +
+            [self.dictionary.get_idx_for_item(token.get_tag(self.tag_type).value) for token in sentence.tokens] +
+            [self.dictionary.get_idx_for_item('<STOP>')]) for sentence in sentences]
 
 
     def get_word_indices_tensor(self, word_indices):
