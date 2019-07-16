@@ -41,11 +41,10 @@ log.info('Task {}'.format(task))
 log.info('Tag type {}'.format(tag_type))
 log.info(f'Beam size {beam_size}')
 log.info(f'LM weight: {args.lm_weight}')
-log.info(f'LM score type: {args.lm_score_type}')
 corpus: TaggedCorpus = NLPTaskDataFetcher.load_corpus(task, path)
 log.info(corpus)
 
 metric, _ = evalute_beam_search(tagger, lm, corpus.test, args.lm_weight,
                                 args.beam_size,
-                                emission_score_type='log-softmax' if tagger.use_crf else 'logits')
+                                emission_score_type='logits')
 print(metric.micro_avg_f_score())
