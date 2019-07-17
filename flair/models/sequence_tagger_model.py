@@ -922,7 +922,7 @@ def _validate_dict(tagger_dict, lm_dict):
 
 
 
-def beam_search_batch(tagger_features, lengths, beam_size, lm, tagger, lm_weight, emission_score_type='log-softmax', eos_scores=None):
+def beam_search_batch(tagger_features, lengths, beam_size, lm, tagger, lm_weight, eos_scores=None):
     batch_size = len(tagger_features)
     beams = [Beam(beam_size, tagger.tag_dictionary) for _ in range(batch_size)]
     cursor = batch_size - 1
@@ -939,8 +939,6 @@ def beam_search_batch(tagger_features, lengths, beam_size, lm, tagger, lm_weight
         lm_scores = torch.nn.functional.log_softmax(lm_scores, dim=-1)
 
         emission_scores = emission_scores.view(((cursor+1), 1, -1))
-        if emission_score_type == 'log-softmax':
-            emission_scores = torch.nn.functional.log_softmax(emission_scores, dim=-1)
 
         if tagger.use_crf:
             transition_scores = torch.cat([tagger.transitions.transpose(0, 1)[beam.get_current_state()] for beam in beams[:cursor+1]]).view((cursor+1, beam_size, -1))
@@ -985,14 +983,14 @@ def beam_search_batch(tagger_features, lengths, beam_size, lm, tagger, lm_weight
 
 
 
-def beam_search(sentences: List[Sentence], tagger: SequenceTagger, lm: MySimpleLanguageModel, beam_size, lm_weight, emission_score_type='log-softmax'):
+def beam_search(sentences: List[Sentence], tagger: SequenceTagger, lm: MySimpleLanguageModel, beam_size, lm_weight):
     sentences.sort(key=lambda x: len(x), reverse=True)
     tagger_features, lengths, gold_tags = tagger.forward(sentences, sort=False)
     tags = []
 
     assert _validate_dict(tagger.tag_dictionary.item2idx, lm.dictionary.item2idx)
     eos_scores = tagger.transitions[tagger.tag_dictionary.get_idx_for_item(STOP_TAG)] if tagger.use_crf else None
-    hyps, scores = beam_search_batch(tagger_features, lengths, beam_size, lm, tagger, lm_weight, emission_score_type, eos_scores)
+    hyps, scores = beam_search_batch(tagger_features, lengths, beam_size, lm, tagger, lm_weight, eos_scores)
     for i, hyp in enumerate(hyps):
         tags.append([Label(tagger.tag_dictionary.get_item_for_index(hyp[j].item())) for j in range(lengths[i])])
     return tags
@@ -1003,7 +1001,6 @@ def evalute_beam_search(tagger,
                         sentences: List[Sentence],
                         lm_weight,
                         beam_size=10,
-                        emission_score_type='log-softmax',
                         eval_mini_batch_size: int = 16,
                         embeddings_in_memory: bool = True,
                         out_path: Path = None) -> (dict, float):
@@ -1020,7 +1017,7 @@ def evalute_beam_search(tagger,
         for batch in batches:
             batch_no += 1
 
-            tags = beam_search(batch, tagger, lm, beam_size, lm_weight, emission_score_type)
+            tags = beam_search(batch, tagger, lm, beam_size, lm_weight)
             loss = 0
 
             eval_loss += loss
@@ -1073,7 +1070,6 @@ class HybridSequenceTagger(flair.nn.Model):
         self.lm = lm
         self.beam_size = beam_size
         self.lm_weight = lm_weight
-        self.emission_score_type = 'logits'
         if eos_scores is None:
             self.eos_scores = torch.nn.Parameter(torch.randn(self.tagger.tagset_size))  # transition score from c to STOP
             self.eos_scores.detach()[self.tagger.tag_dictionary.get_idx_for_item(STOP_TAG)] = -10000
@@ -1121,8 +1117,7 @@ class HybridSequenceTagger(flair.nn.Model):
             gold_scores = gold_scores + self.eos_scores[torch.tensor([tag[length-1] for tag, length in zip(gold_tags, lengths)]).to(flair.device)] * self.lm_weight
 
         tags = []
-        hyps, beam_scores = beam_search_batch(tagger_features, lengths, self.beam_size, self.lm, self.tagger, self.lm_weight,
-                                         self.emission_score_type, self.eos_scores)
+        hyps, beam_scores = beam_search_batch(tagger_features, lengths, self.beam_size, self.lm, self.tagger, self.lm_weight, self.eos_scores)
         if prediction:
             for i, hyp in enumerate(hyps):
                 tags.append([Label(self.tagger.tag_dictionary.get_item_for_index(hyp[j].item())) for j in range(lengths[i])])
@@ -1137,7 +1132,7 @@ class HybridSequenceTagger(flair.nn.Model):
 
     def predict(self, sentences: Union[List[Sentence], Sentence], mini_batch_size=32):
         with torch.no_grad():
-            return beam_search(sentences, self.tagger, self.lm, self.beam_size, self.lm_weight, emission_score_type=self.emission_score_type)
+            return beam_search(sentences, self.tagger, self.lm, self.beam_size, self.lm_weight)
 
 
 
@@ -1163,7 +1158,6 @@ class HybridSequenceTagger(flair.nn.Model):
             'tagger': self.tagger,
             'beam_size': self.beam_size,
             'lm_weight': self.lm_weight,
-            'emission_score_type': self.emission_score_type,
             'eos_scores': self.eos_scores
         }
         self.save_torch_model(model_state, str(model_file))
@@ -1176,7 +1170,6 @@ class HybridSequenceTagger(flair.nn.Model):
             'tagger': self.tagger,
             'beam_size': self.beam_size,
             'lm_weight': self.lm_weight,
-            'emission_score_type': self.emission_score_type,
             'eos_scores': self.eos_scores,
             'optimizer_state_dict': optimizer_state,
             'scheduler_state_dict': scheduler_state,

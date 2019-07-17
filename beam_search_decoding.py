@@ -14,7 +14,6 @@ def def_task(s):
 
 parser = argparse.ArgumentParser(description='Train Flair model')
 parser.add_argument('--task', type=def_task, required=True, help='Task and data path')
-parser.add_argument('--tag-type', required=True, help='Tag type to train')
 parser.add_argument('--tagger-model', required=True, help='Path to the tagger model')
 parser.add_argument('--language-model', required=True, help='Path to the tag language model')
 parser.add_argument('--lm-weight', type=float, default=0.2, help='Beam size')
@@ -34,17 +33,13 @@ tagger = SequenceTagger.load_from_file(args.tagger_model, eval=True)
 lm = MySimpleLanguageModel.load_from_file(args.language_model)
 
 
-tag_type = args.tag_type
 task, path = args.task
 beam_size = args.beam_size
 log.info('Task {}'.format(task))
-log.info('Tag type {}'.format(tag_type))
 log.info(f'Beam size {beam_size}')
 log.info(f'LM weight: {args.lm_weight}')
 corpus: TaggedCorpus = NLPTaskDataFetcher.load_corpus(task, path)
 log.info(corpus)
 
-metric, _ = evalute_beam_search(tagger, lm, corpus.test, args.lm_weight,
-                                args.beam_size,
-                                emission_score_type='logits')
-print(metric.micro_avg_f_score())
+metric, _ = evalute_beam_search(tagger, lm, corpus.test, args.lm_weight, args.beam_size)
+log.info('F1 score: ' + metric.micro_avg_f_score())
