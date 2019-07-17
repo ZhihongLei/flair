@@ -18,7 +18,7 @@ parser.add_argument('--tagger-model', required=True, help='Path to the tagger mo
 parser.add_argument('--language-model', required=True, help='Path to the tag language model')
 parser.add_argument('--lm-weight', type=float, default=0.2, help='Beam size')
 parser.add_argument('--beam-size', type=int, default=-1, help='Beam size')
-parser.add_argument('--interpolate', type=bool, default=True, help='Interpolate CRF and RNN Tag LM scores')
+parser.add_argument('--no-interpolatiton', action='store_true', default=True, help='Do not interpolate CRF and RNN Tag LM scores')
 
 args = parser.parse_args()
 
@@ -39,9 +39,9 @@ beam_size = len(tagger.tag_dictionary.item2idx) if args.beam_size == -1 else arg
 log.info(f'Beam size {beam_size}')
 log.info(f'LM weight: {args.lm_weight}')
 if tagger.use_crf:
-    log.info(f'Interpolate CRF and RNN Tag LM scores: {args.interpolate}')
+    log.info(f'Interpolate CRF and RNN Tag LM scores: {not args.no_interpolation}')
 corpus: TaggedCorpus = NLPTaskDataFetcher.load_corpus(task, path)
 log.info(corpus)
 
-metric, _ = evalute_beam_search(tagger, lm, corpus.test, args.lm_weight, beam_size, args.interpolate)
+metric, _ = evalute_beam_search(tagger, lm, corpus.test, args.lm_weight, beam_size, not args.no_interpolation)
 log.info('F1 score: ' + str(metric.micro_avg_f_score()))
