@@ -18,7 +18,7 @@ parser.add_argument('--tagger-model', required=True, help='Path to the tagger mo
 parser.add_argument('--language-model', required=True, help='Path to the tag language model')
 parser.add_argument('--lm-weight', type=float, default=0.2, help='Beam size')
 parser.add_argument('--beam-size', type=int, default=-1, help='Beam size')
-parser.add_argument('--no-interpolatiton', action='store_true', default=True, help='Do not interpolate CRF and RNN Tag LM scores')
+parser.add_argument('--no-interpolation', action='store_true', default=True, help='Do not interpolate CRF and RNN Tag LM scores')
 
 args = parser.parse_args()
 
