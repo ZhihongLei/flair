@@ -43,5 +43,5 @@ if tagger.use_crf:
 corpus: TaggedCorpus = NLPTaskDataFetcher.load_corpus(task, path)
 log.info(corpus)
 
-metric, _ = evalute_beam_search(tagger, lm, corpus.test, args.lm_weight, args.beam_size, args.interpolate)
+metric, _ = evalute_beam_search(tagger, lm, corpus.test, args.lm_weight, beam_size, args.interpolate)
 log.info('F1 score: ' + metric.micro_avg_f_score())
