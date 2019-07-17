@@ -1172,7 +1172,8 @@ class HybridSequenceTagger(flair.nn.Model):
             'tagger': self.tagger,
             'beam_size': self.beam_size,
             'lm_weight': self.lm_weight,
-            'eos_scores': self.eos_scores
+            'eos_scores': self.eos_scores,
+            'interpolate': self.interpolate
         }
         self.save_torch_model(model_state, str(model_file))
 
@@ -1185,6 +1186,7 @@ class HybridSequenceTagger(flair.nn.Model):
             'beam_size': self.beam_size,
             'lm_weight': self.lm_weight,
             'eos_scores': self.eos_scores,
+            'interpolate': self.interpolate,
             'optimizer_state_dict': optimizer_state,
             'scheduler_state_dict': scheduler_state,
             'epoch': epoch,
@@ -1199,7 +1201,8 @@ class HybridSequenceTagger(flair.nn.Model):
                     state['lm'],
                     state['beam_size'],
                     state['lm_weight'] if 'lm_weight' in state else 1.0,
-                    state['eos_scores'] if 'eos_scores' in state else None)
+                    state['eos_scores'] if 'eos_scores' in state else None,
+                    state['interpolate'] if 'interpolate' in state else True)
         model.load_state_dict(state['state_dict'])
         model.eval()
         model.to(flair.device)
