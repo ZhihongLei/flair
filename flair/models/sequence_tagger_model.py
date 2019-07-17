@@ -922,7 +922,7 @@ def _validate_dict(tagger_dict, lm_dict):
 
 
 
-def beam_search_batch(tagger_features, lengths, beam_size, lm, tagger, lm_weight, eos_scores=None):
+def beam_search_batch(tagger_features, lengths, beam_size, lm, tagger, lm_weight, eos_scores=None, interpolate=True):
     batch_size = len(tagger_features)
     beams = [Beam(beam_size, tagger.tag_dictionary) for _ in range(batch_size)]
     cursor = batch_size - 1
@@ -942,7 +942,10 @@ def beam_search_batch(tagger_features, lengths, beam_size, lm, tagger, lm_weight
 
         if tagger.use_crf:
             transition_scores = torch.cat([tagger.transitions.transpose(0, 1)[beam.get_current_state()] for beam in beams[:cursor+1]]).view((cursor+1, beam_size, -1))
-            scores = emission_scores + (1.-lm_weight) * transition_scores + lm_scores * lm_weight   # (cursor+1, beam_size, num_tags)
+            if interpolate:
+                scores = emission_scores + (1.-lm_weight) * transition_scores + lm_scores * lm_weight   # (cursor+1, beam_size, num_tags)
+            else:
+                scores = emission_scores + transition_scores + lm_scores * lm_weight
         else:
             scores = emission_scores + lm_scores * lm_weight
 
@@ -966,7 +969,10 @@ def beam_search_batch(tagger_features, lengths, beam_size, lm, tagger, lm_weight
         for beam in beams:
             transition_scores = eos_scores[beam.get_current_state()]
             if tagger.use_crf:
-                beam.advance_to_eos(transition_scores)
+                if interpolate:
+                    beam.advance_to_eos(transition_scores)
+                else:
+                    beam.advance_to_eos(transition_scores*(1+lm_weight))
             else:
                 beam.advance_to_eos(transition_scores * lm_weight)
 
@@ -983,14 +989,14 @@ def beam_search_batch(tagger_features, lengths, beam_size, lm, tagger, lm_weight
 
 
 
-def beam_search(sentences: List[Sentence], tagger: SequenceTagger, lm: MySimpleLanguageModel, beam_size, lm_weight):
+def beam_search(sentences: List[Sentence], tagger: SequenceTagger, lm: MySimpleLanguageModel, beam_size, lm_weight, interpolate):
     sentences.sort(key=lambda x: len(x), reverse=True)
     tagger_features, lengths, gold_tags = tagger.forward(sentences, sort=False)
     tags = []
 
     assert _validate_dict(tagger.tag_dictionary.item2idx, lm.dictionary.item2idx)
     eos_scores = tagger.transitions[tagger.tag_dictionary.get_idx_for_item(STOP_TAG)] if tagger.use_crf else None
-    hyps, scores = beam_search_batch(tagger_features, lengths, beam_size, lm, tagger, lm_weight, eos_scores)
+    hyps, scores = beam_search_batch(tagger_features, lengths, beam_size, lm, tagger, lm_weight, eos_scores, interpolate)
     for i, hyp in enumerate(hyps):
         tags.append([Label(tagger.tag_dictionary.get_item_for_index(hyp[j].item())) for j in range(lengths[i])])
     return tags
@@ -1001,6 +1007,7 @@ def evalute_beam_search(tagger,
                         sentences: List[Sentence],
                         lm_weight,
                         beam_size=10,
+                        interpolate=True,
                         eval_mini_batch_size: int = 16,
                         embeddings_in_memory: bool = True,
                         out_path: Path = None) -> (dict, float):
@@ -1017,7 +1024,7 @@ def evalute_beam_search(tagger,
         for batch in batches:
             batch_no += 1
 
-            tags = beam_search(batch, tagger, lm, beam_size, lm_weight)
+            tags = beam_search(batch, tagger, lm, beam_size, lm_weight, interpolate)
             loss = 0
 
             eval_loss += loss
@@ -1064,7 +1071,7 @@ def evalute_beam_search(tagger,
 
 
 class HybridSequenceTagger(flair.nn.Model):
-    def __init__(self, tagger: SequenceTagger, lm: MySimpleLanguageModel, beam_size, lm_weight=1.0, eos_scores=None):
+    def __init__(self, tagger: SequenceTagger, lm: MySimpleLanguageModel, beam_size, lm_weight=1.0, eos_scores=None, interpolate=True):
         super(HybridSequenceTagger, self).__init__()
         self.tagger = tagger
         self.lm = lm
@@ -1075,6 +1082,7 @@ class HybridSequenceTagger(flair.nn.Model):
             self.eos_scores.detach()[self.tagger.tag_dictionary.get_idx_for_item(STOP_TAG)] = -10000
         else:
             self.eos_scores = eos_scores
+        self.interpolate = interpolate
 
         self.tag_type = tagger.tag_type
         self.to(device=flair.device)
@@ -1105,19 +1113,25 @@ class HybridSequenceTagger(flair.nn.Model):
         gold_tags, _ = pad_tensors(gold_tags, self.lm.dictionary.get_idx_for_item('<pad>'))
         if self.tagger.use_crf:
             tagger_gold_emission_scores, tagger_gold_transition_scores = self.tagger._score_sentence(tagger_features, gold_tags, lengths, separate_scores=True, pad_stop=False)
-            tagger_gold_scores = tagger_gold_emission_scores + (1.0 - self.lm_weight) * tagger_gold_transition_scores
+            if self.interpolate:
+                tagger_gold_scores = tagger_gold_emission_scores + (1.0 - self.lm_weight) * tagger_gold_transition_scores
+            else:
+                tagger_gold_scores = tagger_gold_emission_scores + tagger_gold_transition_scores
         else:
             tagger_gold_scores = self.tagger._score_sentence(tagger_features, gold_tags, lengths)
 
         lm_gold_scores = -lm_gold_losses.sum(dim=1)
         gold_scores = tagger_gold_scores + lm_gold_scores * self.lm_weight
         if self.tagger.use_crf:
-            gold_scores = gold_scores + self.eos_scores[torch.tensor([tag[length-1] for tag, length in zip(gold_tags, lengths)]).to(flair.device)]
+            if self.interpolate:
+                gold_scores = gold_scores + self.eos_scores[torch.tensor([tag[length-1] for tag, length in zip(gold_tags, lengths)]).to(flair.device)]
+            else:
+                gold_scores = gold_scores + self.eos_scores[torch.tensor([tag[length - 1] for tag, length in zip(gold_tags, lengths)]).to(flair.device)] * (1 + self.lm_weight)
         else:
             gold_scores = gold_scores + self.eos_scores[torch.tensor([tag[length-1] for tag, length in zip(gold_tags, lengths)]).to(flair.device)] * self.lm_weight
 
         tags = []
-        hyps, beam_scores = beam_search_batch(tagger_features, lengths, self.beam_size, self.lm, self.tagger, self.lm_weight, self.eos_scores)
+        hyps, beam_scores = beam_search_batch(tagger_features, lengths, self.beam_size, self.lm, self.tagger, self.lm_weight, self.eos_scores, self.interpolate)
         if prediction:
             for i, hyp in enumerate(hyps):
                 tags.append([Label(self.tagger.tag_dictionary.get_item_for_index(hyp[j].item())) for j in range(lengths[i])])
