@@ -1071,7 +1071,7 @@ def evalute_beam_search(tagger,
 
 
 class HybridSequenceTagger(flair.nn.Model):
-    def __init__(self, tagger: SequenceTagger, lm: MySimpleLanguageModel, beam_size, lm_weight=1.0, eos_scores=None, interpolate=True):
+    def __init__(self, tagger: SequenceTagger, lm: MySimpleLanguageModel, beam_size, lm_weight=1.0, eos_scores=None):
         super(HybridSequenceTagger, self).__init__()
         self.tagger = tagger
         self.lm = lm
@@ -1082,7 +1082,6 @@ class HybridSequenceTagger(flair.nn.Model):
             self.eos_scores.detach()[self.tagger.tag_dictionary.get_idx_for_item(STOP_TAG)] = -10000
         else:
             self.eos_scores = eos_scores
-        self.interpolate = interpolate
 
         self.tag_type = tagger.tag_type
         self.to(device=flair.device)
@@ -1113,25 +1112,19 @@ class HybridSequenceTagger(flair.nn.Model):
         gold_tags, _ = pad_tensors(gold_tags, self.lm.dictionary.get_idx_for_item('<pad>'))
         if self.tagger.use_crf:
             tagger_gold_emission_scores, tagger_gold_transition_scores = self.tagger._score_sentence(tagger_features, gold_tags, lengths, separate_scores=True, pad_stop=False)
-            if self.interpolate:
-                tagger_gold_scores = tagger_gold_emission_scores + (1.0 - self.lm_weight) * tagger_gold_transition_scores
-            else:
-                tagger_gold_scores = tagger_gold_emission_scores + tagger_gold_transition_scores
+            tagger_gold_scores = tagger_gold_emission_scores + (1.0 - self.lm_weight) * tagger_gold_transition_scores
         else:
             tagger_gold_scores = self.tagger._score_sentence(tagger_features, gold_tags, lengths)
 
         lm_gold_scores = -lm_gold_losses.sum(dim=1)
         gold_scores = tagger_gold_scores + lm_gold_scores * self.lm_weight
         if self.tagger.use_crf:
-            if self.interpolate:
-                gold_scores = gold_scores + self.eos_scores[torch.tensor([tag[length-1] for tag, length in zip(gold_tags, lengths)]).to(flair.device)]
-            else:
-                gold_scores = gold_scores + self.eos_scores[torch.tensor([tag[length - 1] for tag, length in zip(gold_tags, lengths)]).to(flair.device)] * (1 + self.lm_weight)
+            gold_scores = gold_scores + self.eos_scores[torch.tensor([tag[length-1] for tag, length in zip(gold_tags, lengths)]).to(flair.device)]
         else:
             gold_scores = gold_scores + self.eos_scores[torch.tensor([tag[length-1] for tag, length in zip(gold_tags, lengths)]).to(flair.device)] * self.lm_weight
 
         tags = []
-        hyps, beam_scores = beam_search_batch(tagger_features, lengths, self.beam_size, self.lm, self.tagger, self.lm_weight, self.eos_scores, self.interpolate)
+        hyps, beam_scores = beam_search_batch(tagger_features, lengths, self.beam_size, self.lm, self.tagger, self.lm_weight, self.eos_scores)
         if prediction:
             for i, hyp in enumerate(hyps):
                 tags.append([Label(self.tagger.tag_dictionary.get_item_for_index(hyp[j].item())) for j in range(lengths[i])])
@@ -1172,8 +1165,7 @@ class HybridSequenceTagger(flair.nn.Model):
             'tagger': self.tagger,
             'beam_size': self.beam_size,
             'lm_weight': self.lm_weight,
-            'eos_scores': self.eos_scores,
-            'interpolate': self.interpolate
+            'eos_scores': self.eos_scores
         }
         self.save_torch_model(model_state, str(model_file))
 
@@ -1186,7 +1178,6 @@ class HybridSequenceTagger(flair.nn.Model):
             'beam_size': self.beam_size,
             'lm_weight': self.lm_weight,
             'eos_scores': self.eos_scores,
-            'interpolate': self.interpolate,
             'optimizer_state_dict': optimizer_state,
             'scheduler_state_dict': scheduler_state,
             'epoch': epoch,
@@ -1201,8 +1192,7 @@ class HybridSequenceTagger(flair.nn.Model):
                     state['lm'],
                     state['beam_size'],
                     state['lm_weight'] if 'lm_weight' in state else 1.0,
-                    state['eos_scores'] if 'eos_scores' in state else None,
-                    state['interpolate'] if 'interpolate' in state else True)
+                    state['eos_scores'] if 'eos_scores' in state else None)
         model.load_state_dict(state['state_dict'])
         model.eval()
         model.to(flair.device)
