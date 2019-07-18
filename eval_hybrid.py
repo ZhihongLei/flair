@@ -36,11 +36,6 @@ print('Task {}'.format(task))
 embeddings_in_memory = True if task == 'conll_03' else False
 corpus: TaggedCorpus = NLPTaskDataFetcher.load_corpus(task, path)
 
-
-tag_type = args.tag_type
-tag_dictionary = corpus.make_tag_dictionary(tag_type=tag_type)
 tagger: SequenceTagger = HybridSequenceTagger.load_from_file(os.path.join(working_dir, 'best-model.pt'))
-
-
 trainer: ModelTrainer = ModelTrainer(tagger, corpus, SGD)
 trainer.final_test(Path(working_dir), embeddings_in_memory, EvaluationMetric.MICRO_F1_SCORE, 32)

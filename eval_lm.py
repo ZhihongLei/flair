@@ -18,16 +18,13 @@ def def_task(s):
 
 parser = argparse.ArgumentParser(description='Train Flair NER model')
 parser.add_argument('--task', type=def_task, required=True, help='Task and data path')
-parser.add_argument('--tag-type', required=True, help='Tag type to train')
 parser.add_argument('--working-dir', default='.', help='Working directory where outputs are stored')
 args = parser.parse_args()
 
 print("CUDA_VISIBLE_DEVICES={}".format(os.environ.get("CUDA_VISIBLE_DEVICES")))
 
-tag_type = args.tag_type
 task, path = args.task
 log.info('Task {}'.format(task))
-log.info('Tag type {}'.format(tag_type))
 corpus: TaggedCorpus = NLPTaskDataFetcher.load_corpus(task, path)
 
         
