@@ -14,7 +14,6 @@ def def_task(s):
 
 parser = argparse.ArgumentParser(description='Train Flair NER model')
 parser.add_argument('--task', type=def_task, required=True, help='Task and data path')
-parser.add_argument('--tag-type', required=True, help='Tag type to train')
 parser.add_argument('--working-dir', default='.', help='Working directory where outputs are stored')
 args = parser.parse_args()
 
