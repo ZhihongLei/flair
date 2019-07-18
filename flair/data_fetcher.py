@@ -141,12 +141,20 @@ class NLPTaskDataFetcher:
                                                          tag_to_biloes='np')
 
         # many NER tasks follow the CoNLL 03 format with four colulms: text, pos, np and ner tag
-        if task == NLPTask.CONLL_03.value or task == NLPTask.ONTONER.value or task == NLPTask.FASHION.value or task == NLPTask.CONLL_03_POSNER.value:
+        if task == NLPTask.CONLL_03.value or task == NLPTask.FASHION.value or task == NLPTask.CONLL_03_POSNER.value:
             columns = {0: 'text', 1: 'pos', 2: 'np', 3: 'ner'}
 
             return NLPTaskDataFetcher.load_column_corpus(data_folder,
                                                          columns,
                                                          tag_to_biloes=['ner', 'np'],
+                                                         )
+
+        if task == NLPTask.ONTONER.value:
+            columns = {0: 'text', 1: 'pos', 2: 'np', 3: 'ner'}
+
+            return NLPTaskDataFetcher.load_column_corpus(data_folder,
+                                                         columns,
+                                                         tag_to_biloes='ner',
                                                          )
 
         # the CoNLL 03 task for German has an additional lemma column
