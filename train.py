@@ -4,6 +4,10 @@ import os
 import torch
 from torch.optim.adam import Adam
 from torch.optim.sgd import SGD
+import logging
+
+
+log = logging.getLogger('flair')
 
 
 def def_pooled_embeddings(s):
@@ -70,9 +74,9 @@ parser.add_argument('--working-dir', default='.', help='Working directory where 
 
 
 args = parser.parse_args()
-print("CUDA_VISIBLE_DEVICES={}".format(os.environ.get("CUDA_VISIBLE_DEVICES")))
+log.info("CUDA_VISIBLE_DEVICES={}".format(os.environ.get("CUDA_VISIBLE_DEVICES")))
 
-from flair.data_fetcher import NLPTaskDataFetcher, NLPTask
+from flair.data_fetcher import NLPTaskDataFetcher
 from flair.data import TaggedCorpus
 from flair.embeddings import TokenEmbeddings, WordEmbeddings, StackedEmbeddings, CharacterEmbeddings, \
                             FlairEmbeddings, PooledFlairEmbeddings, NonStaticWordEmbeddings
@@ -80,34 +84,18 @@ from flair.training_utils import EvaluationMetric
 from flair.visual.training_curves import Plotter
 
 
-task_name, path = args.task
-emb_sz = 100
-if task_name == 'conll03':
-    task = NLPTask.CONLL_03
-    embeddings_in_memory = True
-elif task_name == 'ontoner':
-    task = NLPTask.ONTONER
-    embeddings_in_memory = False
-elif task_name == 'mono':
-    task = NLPTask.MONO
-    embeddings_in_memory = False
-elif task_name == 'conll03-pos-ner':
-    task = NLPTask.CONLL_03_POSNER
-    embeddings_in_memory = True
-    emb_sz = 15
-else:
-    raise NotImplementedError('{} is not implemented yet'.format(task_name))
-print('Task {}'.format(task.value))
-
+task, path = args.task
+log.info('Task {}'.format(task))
+embeddings_in_memory = task == 'ontoner'
 corpus: TaggedCorpus = NLPTaskDataFetcher.load_corpus(task, path)
-print(corpus)
+log.info(corpus)
+log.info('Corpus has been read')
+
 tag_type = args.tag_type
 
-print('Corpus has been read')
 # initialize embeddings
-
-embedding_types: List[TokenEmbeddings] = [WordEmbeddings(t) if type!='task-trained' \
-                                            else NonStaticWordEmbeddings(emb_sz, corpus.make_vocab_dictionary(min_freq=2)) \
+embedding_types: List[TokenEmbeddings] = [WordEmbeddings(t) if t!='task-trained' \
+                                            else NonStaticWordEmbeddings(100, corpus.make_vocab_dictionary(min_freq=2)) \
                                           for t in args.word_embeddings]
 
 if args.char_embeddings:
@@ -123,7 +111,7 @@ if len(embedding_types) == 0:
 embeddings: StackedEmbeddings = StackedEmbeddings(embeddings=embedding_types)
 
 tag_dictionary = corpus.make_tag_dictionary(tag_type=tag_type)
-print(tag_dictionary.idx2item)
+log.info(tag_dictionary.idx2item)
 
 
 additional_tag_dictionaries = []
@@ -134,7 +122,7 @@ if args.additional_embeddings:
         additional_tag_dictionaries.append(d)
         additional_tag_embeddings.append(NonStaticWordEmbeddings(size, d, tag, args.window_size))
     additional_tag_embeddings = torch.nn.ModuleList(additional_tag_embeddings)
-    for d in additional_tag_dictionaries: print(d.idx2item)
+    for d in additional_tag_dictionaries: log.info(d.idx2item)
 
                 
 
@@ -147,14 +135,14 @@ elif args.optimizer == 'adam':
 else:
     raise ValueError('Cannot recognize optimizer {}'.format(args.optimizer))
 
-print('Using word embeddings: {}'.format(str(embedding_types)))
-print('Using additional tag embeddings: {}'.format(str(additional_tag_embeddings)))
-print('Re-learning embeddings: {}'.format(args.relearn_embeddings))
-print('Using {}'.format(args.optimizer))
-print('Initial learning rate: {}'.format(args.init_lr))
-print('{} hidden layers of size {}'.format(args.num_hidden_layers, args.hidden_size))
-print('Dropout rate: {}'.format(args.dropout_rate))
-print('Using CRF: {}'.format(not args.no_crf))
+log.info('Using word embeddings: {}'.format(str(embedding_types)))
+log.info('Using additional tag embeddings: {}'.format(str(additional_tag_embeddings)))
+log.info('Re-learning embeddings: {}'.format(args.relearn_embeddings))
+log.info('Using {}'.format(args.optimizer))
+log.info('Initial learning rate: {}'.format(args.init_lr))
+log.info('{} hidden layers of size {}'.format(args.num_hidden_layers, args.hidden_size))
+log.info('Dropout rate: {}'.format(args.dropout_rate))
+log.info('Using CRF: {}'.format(not args.no_crf))
 # initialize sequence tagger
 from flair.models import SequenceTagger
 
@@ -170,10 +158,10 @@ if args.additional_model_inputs:
 
 
 if os.path.isdir(args.working_dir) and os.path.isfile(os.path.join(args.working_dir, 'best-model.pt')):
-    print('Loading initial model from ' + os.path.join(args.working_dir, 'best-model.pt'))
+    log.info('Loading initial model from ' + os.path.join(args.working_dir, 'best-model.pt'))
     tagger: SequenceTagger = SequenceTagger.load_from_file(os.path.join(args.working_dir, 'best-model.pt'), eval=False)
 else:
-    print('Initialize model')
+    log.info('Initialize model')
 
     tagger: SequenceTagger = SequenceTagger(hidden_size=args.hidden_size,
                                         embeddings=embeddings,
@@ -191,8 +179,8 @@ else:
                                         train_additional_models=args.train_additional_models)
 
 
-print(tagger.parameters)
-#print(tagger.state_dict)
+log.info(tagger.parameters)
+#log.info(tagger.state_dict)
 from flair.trainers import ModelTrainer
 trainer: ModelTrainer = ModelTrainer(tagger, corpus, optimizer)
 
