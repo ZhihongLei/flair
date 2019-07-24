@@ -856,6 +856,7 @@ class Beam(object):
         self.nextYs = [torch.ones(size, dtype=torch.long, device=flair.device).fill_(self.pad)]
         self.nextYs[0][0] = self.bos
 
+
     def get_current_state(self):
         """Get state of beam."""
         return self.nextYs[-1]
@@ -865,7 +866,7 @@ class Beam(object):
         return self.prevKs[-1]
 
 
-    def advance(self, word_scores):
+    def advance(self, word_scores, tag=None):
         """Advance the beam.
             word_scores: (K * num_words)
         """
@@ -880,6 +881,20 @@ class Beam(object):
         flat_beam_scores = beam_scores.view(-1)
 
         bestScores, bestScoresId = flat_beam_scores.topk(self.size, 0, True, True)
+        if tag is not None:
+            contained = False
+            for i in range(bestScores.shape[0]):
+                if bestScoresId[i] % num_words == tag:
+                    contained = True
+                    break
+            if not contained:
+                tmp = bestScoresId.clone()
+                tmp[-1] = tag
+                bestScoresId = tmp
+                tmp = bestScores.clone()
+                tmp[-1] = torch.max(beam_scores[:, tag])
+                bestScores = tmp
+
         self.scores = bestScores
 
         prev_k = bestScoresId / num_words
@@ -922,7 +937,7 @@ def _validate_dict(tagger_dict, lm_dict):
 
 
 
-def beam_search_batch(tagger_features, lengths, beam_size, lm, tagger, lm_weight, eos_scores=None, interpolate=True):
+def beam_search_batch(tagger_features, lengths, beam_size, lm, tagger, lm_weight, eos_scores=None, interpolate=True, gold_tags=None):
     batch_size = len(tagger_features)
     beams = [Beam(beam_size, tagger.tag_dictionary) for _ in range(batch_size)]
     cursor = batch_size - 1
@@ -950,7 +965,7 @@ def beam_search_batch(tagger_features, lengths, beam_size, lm, tagger, lm_weight
             scores = emission_scores + lm_scores * lm_weight
 
         for j in range(cursor+1):
-            beams[j].advance(scores[j])
+            beams[j].advance(scores[j], gold_tags[j][i] if gold_tags is not None else None)
 
         # sentences must be in descending order by length
         while cursor >= 0 and lengths[cursor] - 1 <= i:
@@ -1071,7 +1086,7 @@ def evalute_beam_search(tagger,
 
 
 class HybridSequenceTagger(flair.nn.Model):
-    def __init__(self, tagger: SequenceTagger, lm: MySimpleLanguageModel, beam_size, lm_weight=1.0, eos_scores=None):
+    def __init__(self, tagger: SequenceTagger, lm: MySimpleLanguageModel, beam_size, lm_weight=1.0, teacher_forcing=False, eos_scores=None):
         super(HybridSequenceTagger, self).__init__()
         self.tagger = tagger
         self.lm = lm
@@ -1082,6 +1097,7 @@ class HybridSequenceTagger(flair.nn.Model):
             self.eos_scores.detach()[self.tagger.tag_dictionary.get_idx_for_item(STOP_TAG)] = -10000
         else:
             self.eos_scores = eos_scores
+        self.teacher_forcing = teacher_forcing
 
         self.tag_type = tagger.tag_type
         self.to(device=flair.device)
@@ -1124,7 +1140,7 @@ class HybridSequenceTagger(flair.nn.Model):
             gold_scores = gold_scores + self.eos_scores[torch.tensor([tag[length-1] for tag, length in zip(gold_tags, lengths)]).to(flair.device)] * self.lm_weight
 
         tags = []
-        hyps, beam_scores = beam_search_batch(tagger_features, lengths, self.beam_size, self.lm, self.tagger, self.lm_weight, self.eos_scores)
+        hyps, beam_scores = beam_search_batch(tagger_features, lengths, self.beam_size, self.lm, self.tagger, self.lm_weight, self.eos_scores, True, gold_tags if self.teacher_forcing else None)
         if prediction:
             for i, hyp in enumerate(hyps):
                 tags.append([Label(self.tagger.tag_dictionary.get_item_for_index(hyp[j].item())) for j in range(lengths[i])])
@@ -1165,6 +1181,7 @@ class HybridSequenceTagger(flair.nn.Model):
             'tagger': self.tagger,
             'beam_size': self.beam_size,
             'lm_weight': self.lm_weight,
+            'teacher_forcing': self.teacher_forcing,
             'eos_scores': self.eos_scores
         }
         self.save_torch_model(model_state, str(model_file))
@@ -1177,6 +1194,7 @@ class HybridSequenceTagger(flair.nn.Model):
             'tagger': self.tagger,
             'beam_size': self.beam_size,
             'lm_weight': self.lm_weight,
+            'teacher_forcing': self.teacher_forcing,
             'eos_scores': self.eos_scores,
             'optimizer_state_dict': optimizer_state,
             'scheduler_state_dict': scheduler_state,
@@ -1192,6 +1210,7 @@ class HybridSequenceTagger(flair.nn.Model):
                     state['lm'],
                     state['beam_size'],
                     state['lm_weight'] if 'lm_weight' in state else 1.0,
+                    state['teacher_forcing'] if 'teacher_forcing' in state else False,
                     state['eos_scores'] if 'eos_scores' in state else None)
         model.load_state_dict(state['state_dict'])
         model.eval()

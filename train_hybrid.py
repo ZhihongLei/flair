@@ -69,6 +69,7 @@ parser.add_argument('--lm-hidden-size', type=int, default=50, help='Hidden layer
 parser.add_argument('--lm-num-hidden-layers', type=int, default=1, help='Number of hidden layers of LM')
 parser.add_argument('--dropout-rate', type=float, default=0.0, help='Dropout rate')
 parser.add_argument('--no-crf', action='store_true', help='Do not use CRF')
+parser.add_argument('--teacher-forcing', action='store_true', help='Force gold tags on the beam')
 parser.add_argument('--optimizer', default='sgd', choices=['sgd', 'adam'], help='Type of optimizer')
 parser.add_argument('--init-lr', type=float, default=0.1, help='Initial learning rate')
 parser.add_argument('--pretraining-epochs', type=int, default=-1, help='Number of pre-training epochs')
@@ -187,7 +188,9 @@ else:
 
     log.info(f'Beam size: {beam_size}')
     log.info(f'LM weight: {lm_weight}')
-    model = HybridSequenceTagger(tagger, lm, beam_size, lm_weight)
+    if args.teacher_forcing:
+        log.info(f'Force gold tags on beams')
+    model = HybridSequenceTagger(tagger, lm, beam_size, lm_weight, args.teacher_forcing)
 
 
 if args.optimizer == 'sgd':
