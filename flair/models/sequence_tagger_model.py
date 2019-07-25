@@ -880,6 +880,7 @@ class Beam(object):
 
         flat_beam_scores = beam_scores.view(-1)
 
+
         bestScores, bestScoresId = flat_beam_scores.topk(self.size, 0, True, True)
         if tag is not None:
             contained = False
@@ -892,7 +893,10 @@ class Beam(object):
                 tmp[-1] = tag
                 bestScoresId = tmp
                 tmp = bestScores.clone()
-                tmp[-1] = torch.max(beam_scores[:, tag])
+                if len(beam_scores.shape) == 2:
+                    tmp[-1] = torch.max(beam_scores[:, tag])
+                else:
+                    tmp[-1] = beam_scores[tag]
                 bestScores = tmp
 
         self.scores = bestScores
