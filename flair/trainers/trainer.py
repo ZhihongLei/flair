@@ -279,8 +279,10 @@ class ModelTrainer:
                 self.model = HybridSequenceTagger.load_from_file(base_path / 'best-model.pt')
 
 
+        log.info('Test starts.')
         test_metric, test_loss = self.evaluate(self.model, self.corpus.test, eval_mini_batch_size=eval_mini_batch_size,
                                                embeddings_in_memory=embeddings_in_memory)
+        log.info('Test ends.')
 
         log.info(f'MICRO_AVG: acc {test_metric.micro_avg_accuracy()} - f1-score {test_metric.micro_avg_f_score()}')
         log.info(f'MACRO_AVG: acc {test_metric.macro_avg_accuracy()} - f1-score {test_metric.macro_avg_f_score()}')
