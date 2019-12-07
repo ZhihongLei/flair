@@ -2,6 +2,12 @@ import os
 import argparse
 from pathlib import Path
 from flair.models.sequence_tagger_model import HybridSequenceTagger
+from torch.optim.sgd import SGD
+from flair.data_fetcher import NLPTaskDataFetcher
+from flair.data import TaggedCorpus
+from flair.training_utils import EvaluationMetric
+from flair.trainers import ModelTrainer
+from flair.models import SequenceTagger
 import logging
 
 log = logging.getLogger('flair')
@@ -23,17 +29,8 @@ args = parser.parse_args()
 
 working_dir = args.working_dir
 
-
-from torch.optim.sgd import SGD
-from flair.data_fetcher import NLPTaskDataFetcher
-from flair.data import TaggedCorpus
-from flair.training_utils import EvaluationMetric
-from flair.trainers import ModelTrainer
-from flair.models import SequenceTagger
-
-
 task, path = args.task
-print('Task {}'.format(task))
+log.log('Task {}'.format(task))
 corpus: TaggedCorpus = NLPTaskDataFetcher.load_corpus(task, path)
 batch_size = args.batch_size
 log.info(f'Batch size {batch_size}')

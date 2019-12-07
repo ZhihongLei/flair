@@ -90,7 +90,8 @@ log.info(f'Batch size {batch_size}')
 log.info('Working dir: ' + working_dir)
 
 trainer = MyLMTrainer(model, train_data, dev_data, test_data, optimizer)
-trainer.train(base_path=working_dir, learning_rate=lr, mini_batch_size=batch_size, max_epochs=args.num_epochs, anneal_factor=anneal_factor, anneal_against_train_loss=False)
+trainer.train(base_path=working_dir, learning_rate=lr, mini_batch_size=batch_size, max_epochs=args.num_epochs,
+              anneal_factor=anneal_factor, anneal_against_train_loss=False)
 
 log.info('Reset to best model...')
 model = MyLanguageMode.load_from_file(os.path.join(args.working_dir, 'best-model.pt'))

@@ -17,7 +17,6 @@ class NLPTask(Enum):
 
     # conll 03 NER column format
     CONLL_03 = 'conll_03'
-    CONLL_03_POSNER = 'conll_03_pos_ner'
     CONLL_03_GERMAN = 'conll_03_german'
     CONLL_03_DUTCH = 'conll_03_dutch'
     CONLL_03_SPANISH = 'conll_03_spanish'
@@ -94,8 +93,6 @@ class NLPTask(Enum):
     AG_NEWS = 'ag_news'
     TREC_6 = 'trec-6'
     TREC_50 = 'trec-50'
-    
-    MONO = 'mono_en'
 
 
 class NLPTaskDataFetcher:
@@ -141,7 +138,7 @@ class NLPTaskDataFetcher:
                                                          tag_to_biloes='np')
 
         # many NER tasks follow the CoNLL 03 format with four colulms: text, pos, np and ner tag
-        if task == NLPTask.CONLL_03.value or task == NLPTask.FASHION.value or task == NLPTask.CONLL_03_POSNER.value:
+        if task == NLPTask.CONLL_03.value or task == NLPTask.FASHION.value:
             columns = {0: 'text', 1: 'pos', 2: 'np', 3: 'ner'}
 
             return NLPTaskDataFetcher.load_column_corpus(data_folder,
@@ -211,10 +208,7 @@ class NLPTaskDataFetcher:
         if task == NLPTask.NER_BASQUE.value:
             columns = {0: 'text', 1: 'ner'}
             return NLPTaskDataFetcher.load_column_corpus(data_folder, columns, tag_to_biloes='ner')
-        
-        if task == NLPTask.MONO.value:
-            columns = {0: 'text', 1: 'pos'}
-            return NLPTaskDataFetcher.load_column_corpus(data_folder, columns)
+
 
     @staticmethod
     def load_column_corpus(

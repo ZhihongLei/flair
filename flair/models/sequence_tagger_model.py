@@ -927,7 +927,6 @@ class Beam(object):
         return hyp[::-1]
 
 
-
 def _validate_dict(tagger_dict, lm_dict):
     if len(tagger_dict) != len(lm_dict): 
         print(tagger_dict)
@@ -938,7 +937,6 @@ def _validate_dict(tagger_dict, lm_dict):
             print(w, lm_dict[w], tagger_dict[w])
             return False
     return True
-
 
 
 def beam_search_batch(tagger_features, lengths, beam_size, lm, tagger, lm_weight, eos_scores=None, interpolate=True, gold_tags=None):
@@ -1005,7 +1003,6 @@ def beam_search_batch(tagger_features, lengths, beam_size, lm, tagger, lm_weight
 
     scores = torch.cat(scores).view((batch_size, beam_size))
     return hyps, scores
-
 
 
 def beam_search(sentences: List[Sentence], tagger: SequenceTagger, lm: MyLanguageMode, beam_size, lm_weight, interpolate):
@@ -1086,7 +1083,6 @@ def evalute_beam_search(tagger,
                 outfile.write(''.join(lines))
 
         return metric, eval_loss   
-        
 
 
 class HybridSequenceTagger(flair.nn.Model):
@@ -1149,9 +1145,9 @@ class HybridSequenceTagger(flair.nn.Model):
             for i, hyp in enumerate(hyps):
                 tags.append([Label(self.tagger.tag_dictionary.get_item_for_index(hyp[j].item())) for j in range(lengths[i])])
 
-        error_scores = torch.logsumexp(beam_scores, dim=1)
+        beam_scores = torch.logsumexp(beam_scores, dim=1)
 
-        scores = gold_scores - error_scores
+        scores = gold_scores - beam_scores
         if prediction:
             return scores, tags
         else: return scores

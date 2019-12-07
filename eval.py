@@ -1,6 +1,12 @@
 import os
 import argparse
 from pathlib import Path
+from torch.optim.sgd import SGD
+from flair.data_fetcher import NLPTaskDataFetcher
+from flair.data import TaggedCorpus
+from flair.training_utils import EvaluationMetric
+from flair.trainers import ModelTrainer
+from flair.models import SequenceTagger
 import logging
 
 log = logging.getLogger('flair')
@@ -21,15 +27,6 @@ parser.add_argument('--working-dir', default='.', help='Working directory where 
 args = parser.parse_args()
 
 working_dir = args.working_dir
-
-
-from torch.optim.sgd import SGD
-from flair.data_fetcher import NLPTaskDataFetcher
-from flair.data import TaggedCorpus
-from flair.training_utils import EvaluationMetric
-from flair.trainers import ModelTrainer
-from flair.models import SequenceTagger
-
 
 task, path = args.task
 corpus: TaggedCorpus = NLPTaskDataFetcher.load_corpus(task, path)

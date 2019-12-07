@@ -27,7 +27,6 @@ task, path = args.task
 log.info('Task {}'.format(task))
 corpus: TaggedCorpus = NLPTaskDataFetcher.load_corpus(task, path)
 
-
 log.info('Loading initial model from ' + os.path.join(args.working_dir, 'best-model.pt'))
 model = MyLanguageMode.load_from_file(os.path.join(args.working_dir, 'best-model.pt'))
 train_data, dev_data, test_data = [model.get_word_indices(data) for data in [corpus.train, corpus.dev, corpus.test]]
