@@ -13,7 +13,8 @@ def def_task(s):
         raise argparse.ArgumentTypeError('Task should be in format: TaskName:DataPath.')
     return task, path
 
-parser = argparse.ArgumentParser(description='Train Flair NER model')
+
+parser = argparse.ArgumentParser(description='Test Flair NER model')
 parser.add_argument('--task', type=def_task, required=True, help='Task and data path')
 parser.add_argument('--batch-size', type=int, default=32, help='Batch size')
 parser.add_argument('--working-dir', default='.', help='Working directory where outputs are stored')
@@ -37,4 +38,4 @@ log.info(f'Batch size {batch_size}')
 
 tagger: SequenceTagger = SequenceTagger.load_from_file(os.path.join(working_dir, 'best-model.pt'))
 trainer: ModelTrainer = ModelTrainer(tagger, corpus, SGD)
-trainer.final_test(Path(working_dir), True, EvaluationMetric.MICRO_F1_SCORE, 32)
+trainer.final_test(Path(working_dir), True, EvaluationMetric.MICRO_F1_SCORE, batch_size)

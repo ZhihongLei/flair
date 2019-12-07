@@ -4,6 +4,14 @@ import os
 import torch
 from torch.optim.adam import Adam
 from torch.optim.sgd import SGD
+from flair.data_fetcher import NLPTaskDataFetcher
+from flair.data import TaggedCorpus
+from flair.embeddings import TokenEmbeddings, WordEmbeddings, StackedEmbeddings, CharacterEmbeddings, \
+                            FlairEmbeddings, PooledFlairEmbeddings, NonStaticWordEmbeddings
+from flair.training_utils import EvaluationMetric
+from flair.visual.training_curves import Plotter
+from flair.models import SequenceTagger
+from flair.trainers import ModelTrainer
 import logging
 
 
@@ -35,6 +43,7 @@ def def_task(s):
     except:
         raise argparse.ArgumentTypeError('Task should be in format: TaskName:DataPath.')
     return task, path
+
 
 def def_additional_model_inputs(s):
     try:
@@ -70,28 +79,17 @@ parser.add_argument('--no-crf', action='store_true', help='Do not use CRF')
 parser.add_argument('--optimizer', default='sgd', choices=['sgd', 'adam'], help='Type of optimizer')
 parser.add_argument('--init-lr', type=float, default=0.1, help='Initial learning rate')
 parser.add_argument('--num-epochs', type=int, default=20, help='Number of epochs')
+parser.add_argument('--batch-size', type=int, default=32, help='Batch size')
 parser.add_argument('--working-dir', default='.', help='Working directory where outputs are stored')
 
 
 args = parser.parse_args()
-log.info("CUDA_VISIBLE_DEVICES={}".format(os.environ.get("CUDA_VISIBLE_DEVICES")))
-
-from flair.data_fetcher import NLPTaskDataFetcher
-from flair.data import TaggedCorpus
-from flair.embeddings import TokenEmbeddings, WordEmbeddings, StackedEmbeddings, CharacterEmbeddings, \
-                            FlairEmbeddings, PooledFlairEmbeddings, NonStaticWordEmbeddings
-from flair.training_utils import EvaluationMetric
-from flair.visual.training_curves import Plotter
-
 
 task, path = args.task
 log.info('Task {}'.format(task))
-embeddings_in_memory = task == 'ontoner'
 corpus: TaggedCorpus = NLPTaskDataFetcher.load_corpus(task, path)
-log.info(corpus)
-log.info('Corpus has been read')
-
 tag_type = args.tag_type
+batch_size = args.batch_size
 
 # initialize embeddings
 embedding_types: List[TokenEmbeddings] = [WordEmbeddings(t) if t!='task-trained' \
@@ -124,7 +122,6 @@ if args.additional_embeddings:
     additional_tag_embeddings = torch.nn.ModuleList(additional_tag_embeddings)
     for d in additional_tag_dictionaries: log.info(d.idx2item)
 
-                
 
 if args.optimizer == 'sgd':
     optimizer = SGD
@@ -143,8 +140,8 @@ log.info('Initial learning rate: {}'.format(args.init_lr))
 log.info('{} hidden layers of size {}'.format(args.num_hidden_layers, args.hidden_size))
 log.info('Dropout rate: {}'.format(args.dropout_rate))
 log.info('Using CRF: {}'.format(not args.no_crf))
+log.info(f'Batch size {batch_size}')
 # initialize sequence tagger
-from flair.models import SequenceTagger
 
 additional_model_paths: List[str] = []
 additional_model_from_types: List[str] = []
@@ -179,13 +176,9 @@ else:
                                         train_additional_models=args.train_additional_models)
 
 
-log.info(tagger.parameters)
-#log.info(tagger.state_dict)
-from flair.trainers import ModelTrainer
 trainer: ModelTrainer = ModelTrainer(tagger, corpus, optimizer)
-
-trainer.train(args.working_dir, EvaluationMetric.MICRO_F1_SCORE, learning_rate=args.init_lr, mini_batch_size=32,
-              max_epochs=args.num_epochs, anneal_factor=anneal_factor, embeddings_in_memory=embeddings_in_memory)
+trainer.train(args.working_dir, EvaluationMetric.MICRO_F1_SCORE, learning_rate=args.init_lr, mini_batch_size=batch_size,
+              max_epochs=args.num_epochs, anneal_factor=anneal_factor, embeddings_in_memory=True)
 
 plotter = Plotter()
 plotter.plot_training_curves('{}/loss.tsv'.format(args.working_dir))
